@@ -1,6 +1,21 @@
 ---
 name: etherscan-flow
-description: Given one or more transaction hashes, wallet/contract addresses, or a resolvable business/entity scope, call the Etherscan API V2 to trace on-chain money flow and write a single Etherscan Flow Case JSON file (nodes + edges schema). Supports two modes: strict trace mode for tx/address investigation, and business/entity profile mode for prompts like "show ENS DAO as a business" when the entity can be resolved to verified addresses. Output is JSON only; no chat summary or prose. Use when the user says "trace this tx", "visualize this transaction", "show the flow of", "map this address", "follow the money", "build a case for this scam", "investigate this hack", "show this DAO/business income and spending", or pastes a 0x… hash/address and asks you to trace, visualize, profile, or investigate it. Every address, amount, and tx hash is fetched live from the Etherscan API; conceptual explanations are allowed only as notes over verified on-chain data, never as invented flows. Works on Ethereum mainnet by default; the user can specify a different chain. Accepts optional apikey= argument.
+description: >-
+  Given one or more transaction hashes, wallet/contract addresses, or a
+  resolvable business/entity scope, call the Etherscan API V2 to trace
+  on-chain money flow and write a single Etherscan Flow Case JSON file
+  (nodes + edges schema). Supports two modes: strict trace mode for tx/address
+  investigation, and business/entity profile mode for prompts like "show ENS
+  DAO as a business" when the entity can be resolved to verified addresses.
+  Output is JSON only; no chat summary or prose. Use when the user says "trace
+  this tx", "visualize this transaction", "show the flow of", "map this
+  address", "follow the money", "build a case for this scam", "investigate
+  this hack", "show this DAO/business income and spending", or pastes a
+  0x... hash/address and asks you to trace, visualize, profile, or investigate
+  it. Every address, amount, and tx hash is fetched live from the Etherscan
+  API; conceptual explanations are allowed only as notes over verified
+  on-chain data, never as invented flows. Works on Ethereum mainnet by default;
+  the user can specify a different chain. Accepts optional apikey= argument.
 ---
 
 # Etherscan Flow — Transaction and Business Flow Tracer
