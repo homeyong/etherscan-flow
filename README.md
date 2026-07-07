@@ -46,18 +46,19 @@ Then in Claude Code: `/etherscan-flow trace this scam 0x…`
 <details>
 <summary><b>Codex CLI</b></summary>
 
-Codex has no dedicated skills folder yet, so you load the skill as context.
+Codex reads skills from `~/.codex/skills/` (support added Dec 2025). Clone into it, and Codex auto-discovers the skill from `SKILL.md`'s name + description.
 
-**macOS / Linux / Windows**
+**macOS / Linux**
 ```bash
-git clone https://github.com/homeyong/etherscan-flow.git
+git clone https://github.com/homeyong/etherscan-flow.git ~/.codex/skills/etherscan-flow
 ```
 
-Then either add one line to your project's `AGENTS.md`:
+**Windows (PowerShell)**
+```powershell
+git clone https://github.com/homeyong/etherscan-flow.git "$env:USERPROFILE\.codex\skills\etherscan-flow"
 ```
-For any on-chain tracing request, follow ./etherscan-flow/SKILL.md exactly.
-```
-…or paste the contents of `SKILL.md` at the start of a Codex session.
+
+Prefer to scope it to one project? Clone into `.codex/skills/etherscan-flow` in your repo instead.
 </details>
 
 <details>
