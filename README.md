@@ -119,6 +119,56 @@ build a case for this hack 0x<address> apikey=YOUR_KEY
 
 You get a JSON file. Open [Etherscan Flow](https://etherscan.io), choose **Import**, and paste it — the schema maps one-to-one, no reformatting.
 
+## Stop it asking permission for every call
+
+A single trace makes **many** API calls (up to 100). If your agent asks you to approve each one, that's the agent's **permission system**, not the skill — every call is a read-only `GET` to one host (`api.etherscan.io`), so it's safe to allowlist once and let the whole trace run uninterrupted.
+
+<details open>
+<summary><b>Claude Code (CLI)</b></summary>
+
+Fastest: the first time it prompts, choose **"Yes, and don't ask again for curl commands"** (or WebFetch to `api.etherscan.io`).
+
+Or set it up ahead of time — run `/permissions` and add the rules, or add them to your **user** settings at `~/.claude/settings.json` (this is where an installed skill runs from):
+
+```json
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:api.etherscan.io)",
+      "Bash(curl:*)"
+    ]
+  }
+}
+```
+
+`Bash(curl:*)` allows all `curl` invocations; the skill's Hard rule 2 already restricts it to the single Etherscan host. If you'd rather not allow `curl` globally, keep just the `WebFetch` rule and tell the agent to "use WebFetch, not curl."
+</details>
+
+<details>
+<summary><b>Codex CLI</b></summary>
+
+Run the trace in an auto-approving mode instead of confirming each command:
+
+```bash
+codex --full-auto "trace this scam 0x…"
+```
+
+Or set it once in `~/.codex/config.toml`:
+
+```toml
+approval_policy = "never"     # don't prompt per command
+sandbox_mode = "workspace-write"  # allows outbound network for the API calls
+```
+
+Scope this to trusted use — `never` stops all approval prompts, not just Etherscan ones.
+</details>
+
+<details>
+<summary><b>Claude.ai (web)</b></summary>
+
+There are no per-call prompts here; instead, on paid plans you must **allowlist `api.etherscan.io`** once in the skill's network settings (see Quick start) or the calls are blocked outright.
+</details>
+
 ## Output schema
 
 ```json
