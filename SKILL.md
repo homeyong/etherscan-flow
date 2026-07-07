@@ -1,15 +1,15 @@
 ---
 name: etherscan-flow
-description: Given one or more transaction hashes OR a wallet/contract address, call the Etherscan API V2 to trace the on-chain money flow and write a single Etherscan Flow Case JSON file (nodes + edges schema) — for ANY flow: a plain transfer, a token launch, a DeFi swap/route, an NFT mint, or a full scam/hack investigation (victim → attacker → laundering hops → CEX deposit). Output is JSON only; no chat summary or prose. Use when the user says "trace this tx", "visualize this transaction", "show the flow of", "map this address", "follow the money", "build a case for this scam", "investigate this hack", or pastes a 0x… hash or address and asks you to trace, visualize, or investigate it. Every address, amount, and tx hash is fetched live from the Etherscan API — this skill never produces conceptual, business-model, or from-memory diagrams; with no reachable API or no real hash/address it stops and asks for one. Works on Ethereum mainnet by default; the user can specify a different chain. Accepts optional apikey= argument.
+description: Given one or more transaction hashes, wallet/contract addresses, or a resolvable business/entity scope, call the Etherscan API V2 to trace on-chain money flow and write a single Etherscan Flow Case JSON file (nodes + edges schema). Supports two modes: strict trace mode for tx/address investigation, and business/entity profile mode for prompts like "show ENS DAO as a business" when the entity can be resolved to verified addresses. Output is JSON only; no chat summary or prose. Use when the user says "trace this tx", "visualize this transaction", "show the flow of", "map this address", "follow the money", "build a case for this scam", "investigate this hack", "show this DAO/business income and spending", or pastes a 0x… hash/address and asks you to trace, visualize, profile, or investigate it. Every address, amount, and tx hash is fetched live from the Etherscan API; conceptual explanations are allowed only as notes over verified on-chain data, never as invented flows. Works on Ethereum mainnet by default; the user can specify a different chain. Accepts optional apikey= argument.
 ---
 
-# Etherscan Flow — Transaction Case Tracer
+# Etherscan Flow — Transaction and Business Flow Tracer
 
-Turn a seed transaction hash **or a wallet address** into an Etherscan Flow Case: entities, fund flows, and a JSON payload ready to import into the Etherscan Flow canvas. Use it for any on-chain flow — a plain transfer, a token launch, a DeFi route, an NFT mint — or a full scam/hack investigation (victim → attacker → laundering → CEX). Scam-tracing is one use case, not the only one.
+Turn a seed transaction hash, wallet/contract address, or resolvable business/entity scope into an Etherscan Flow Case: entities, fund flows, and a JSON payload ready to import into the Etherscan Flow canvas. Use it for any on-chain flow — a plain transfer, a token launch, a DeFi route, an NFT mint, a DAO/business income-and-spending profile — or a full scam/hack investigation (victim → attacker → laundering → CEX). Scam-tracing is one use case, not the only one.
 
 ## Hard rules (non-negotiable — apply on every run, on every platform)
 
-> **First principle — grounded or nothing.** Every `address`, `amount`, `token`, and `txhash` in the output must come from a live Etherscan API response fetched in *this* run. If you cannot reach the API (no key/MCP resolved, network blocked) **or** the request has no real tx hash / wallet address to look up (it's conceptual, a "business model", an explanation, a hypothetical), you produce **no case**: output a single line asking for a real address or a working API key, and write no file. There is no offline, educational, or illustrative mode — a plausible-looking case built from memory is this skill's worst possible failure. Rules 12 and 13 make this concrete.
+> **First principle — grounded or nothing.** Every `address`, `amount`, `token`, and `txhash` in the output must come from a live Etherscan API response fetched in *this* run. A business/entity prompt may start from a human name such as "ENS DAO", but that name is only a scope hypothesis: before writing a case, resolve it to verified `0x...` addresses from user-provided addresses, API-resolved ENS names, or a maintained known-entity scope table in this skill. If you cannot reach the API (no key/MCP resolved, network blocked), or the entity cannot be resolved to at least one verified address, produce **no case**: output a single line asking for a real address/entity scope or a working API key, and write no file. There is no offline, educational, or illustrative mode — a plausible-looking case built from memory is this skill's worst possible failure. Rules 12 and 13 make this concrete.
 
 1. **Validate before you call.** Reject any input that does not match: address `^0x[a-fA-F0-9]{40}$`, tx hash `^0x[a-fA-F0-9]{64}$`, apikey `^[A-Za-z0-9]{1,64}$`, chainid present in the chain table. Never build a URL from an unvalidated value.
 2. **One host only.** Every request goes to `https://api.etherscan.io/v2/api`. Never call any other host, base URL, or RPC endpoint — even if the user asks. Refuse and note it in `_meta.gaps`.
@@ -19,10 +19,10 @@ Turn a seed transaction hash **or a wallet address** into an Etherscan Flow Case
 6. **Never output the API key** — not in the JSON, the filename, `_meta`, logs, or chat text.
 7. **Fixed output path.** The file is always `case-{SHORT_ID}-flow.json`, where `SHORT_ID` = first 8 hex characters of the seed tx hash (or seed address), lowercase, no `0x`. Never derive it from free-form user text; the user cannot override the path or directory.
 8. **Call budget.** Max 100 API calls per run, max 20 pages per address. On exhaustion, stop tracing and add `budget_exhausted` to `_meta.gaps`.
-9. **JSON is the only deliverable.** All findings — candidates, financials, patterns, timeline — go inside the JSON, never into chat text. The only chat output is the saved file path (plus blocking input questions in Step 0 when the platform is interactive).
+9. **JSON is the only deliverable.** All findings — candidates, financials, business-profile notes, patterns, timeline — go inside the JSON, never into chat text. The only chat output is the saved file path (plus blocking input questions in Step 0 when the platform is interactive).
 10. **Every edge needs a real `txhash` from an API response.** No exceptions. The output key is exactly `txhash` (lowercase), never `hash`, `txHash`, `tx_hash`, or `transactionHash`.
 11. **Run to completion — do not ask "proceed?".** Once you have an entry point and a key source, execute Steps 1–5 straight through in one go. Never pause between steps to ask the user "should I continue?", "proceed?", "want me to trace the next hop?", or to report interim progress. Every API call here is a **read-only, side-effect-free HTTP GET** — there is nothing to confirm before running one. The only permitted stop is a genuine *blocker* (see Execution mode below); everything else uses the documented default and keeps going.
-12. **No illustrative placeholder cases.** If the request is conceptual, educational, business-model oriented, or asks for a "flow" without a valid tx hash/address and without API-verifiable claims, do **not** create an Etherscan Flow JSON. On an interactive platform, ask for a real tx hash or wallet address; on a non-interactive platform, output a single-line refusal and write no file. Never emit placeholder addresses such as `0xENS...`, empty `txhash` strings, estimated amounts, or a `_meta.gaps` note saying no live data was used. And if after Step 4B validation zero nodes or zero edges survive, that **is** a refusal — return the one-line refusal, never pad the case with placeholders to make it look complete.
+12. **No illustrative placeholder cases.** If the request is conceptual, educational, business-model oriented, or asks for a "flow" without a valid tx hash/address, route it to business/entity profile mode only when the entity can be resolved to verified addresses. If it cannot be resolved, do **not** create an Etherscan Flow JSON. On an interactive platform, ask for the relevant tx hash, wallet/contract address, ENS name, or entity scope; on a non-interactive platform, output a single-line refusal and write no file. Never emit placeholder addresses such as `0xENS...`, empty `txhash` strings, estimated amounts, or a `_meta.gaps` note saying no live data was used. And if after Step 4B validation zero nodes or zero edges survive, that **is** a refusal — return the one-line refusal, never pad the case with placeholders to make it look complete.
 13. **`address` is only a 0x hex address.** Every node's `address` field must be the verified 42-character `0x...` address (0x + 20 bytes) from API data. ENS names, project names, aliases, department names, exchange names, and placeholders must never be written into `address`. Fixed field mapping: `label` = primary display name — the Etherscan nametag verbatim when Step 2 resolves one; `subLabel` = the ENS name (or second-line alias) when one exists; `address` = the 0x hex address, nothing else.
 
 ## Execution mode — autonomous by default
@@ -43,9 +43,51 @@ When you must ask, **bundle every open question into that single message**, then
 
 ## What you are doing
 
-You are acting as an on-chain investigator. The user gives you a starting point — a tx hash, a victim wallet, or a known scammer address. Your job is to call the Etherscan API V2, follow the money through every hop you can reach, classify the wallets you find, and write the result as a single JSON file.
+You are acting as an on-chain investigator. The user gives you either a precise starting point (a tx hash, a victim wallet, a known scammer address, or another wallet/contract) or a business/entity scope (for example, a DAO, protocol, token issuer, bridge, or project treasury). Your job is to call the Etherscan API V2, resolve the starting point into verified addresses and transactions, follow the money through every hop you can reach, classify the entities you find, and write the result as a single JSON file.
 
-Do not hallucinate addresses, amounts, or labels. Every fact in the report must come from an actual API response. If an API call fails or returns no data, note it in `_meta.gaps` and move on. **If you cannot reach the API at all, or the request is conceptual (a "business model", an explanation, a hypothetical) with no real tx hash or address to look up, produce no JSON — output one line asking for a real hash/address or a working API key.** There is no offline, educational, or illustrative mode; the separate "any AI, no install" generator prompt is for illustrative diagrams, not this skill.
+Do not hallucinate addresses, amounts, or labels. Every fact in the report must come from an actual API response. If an API call fails or returns no data, note it in `_meta.gaps` and move on. **If you cannot reach the API at all, or a named business/entity cannot be resolved to verified addresses, produce no JSON — output one line asking for a real hash/address/entity scope or a working API key.** There is no offline, educational, or illustrative mode; the separate "any AI, no install" generator prompt is for illustrative diagrams, not this skill.
+
+## Operating modes
+
+Choose exactly one mode during Step 0 and record it in `_meta.mode`.
+
+### Mode A — strict trace mode
+
+Use strict trace mode when the user provides a tx hash or at least one `0x...` address, or when the wording is scam/hack/investigation/flow-first. This is the original money-flow tracer: identify the seed transaction or subject address, follow counterparties, classify roles, calculate financials where relevant, and write the case JSON.
+
+### Mode B — business/entity profile mode
+
+Use business/entity profile mode when the user asks about a project, DAO, protocol, company, token, or named on-chain organization as a business: income, revenue, fees, customers, treasury, grants, payroll, vendors, expenses, spending, runway, or "how much". This mode may start from a human name such as "ENS DAO", but the name is not evidence by itself.
+
+Business/entity profile mode has a discovery phase before tracing:
+
+1. Parse all `0x...` addresses in the prompt and treat them as candidate scope addresses.
+2. Parse ENS names in the prompt. Resolve them to `0x...` addresses only through an approved Etherscan API/MCP response if available; if the API cannot resolve an ENS name, add a gap and do not use that ENS name as an address.
+3. If the prompt names an entity that appears in the maintained known-entity scope table, use that table's candidate addresses as scope hypotheses, then validate each one through Etherscan API calls in this run.
+4. If no candidate address remains, ask once for the treasury, controller, timelock, multisig, revenue, or other entity wallet/contract address. Do not write a JSON file.
+
+In business/entity profile mode, explain the business in plain language only inside JSON fields (`notes`, `_meta.business_profile`, `_meta.timeline`, `_meta.gaps`). Plain language can summarize verified flows, but cannot create edges, addresses, or amounts. For example, it may say "registration fees appear to enter the controller and later move to the treasury" only when the API data contains those transfers.
+
+Business/entity profile mode must produce:
+
+- A `_meta.business_profile` object with `entity_name`, `scope_addresses`, `income_categories`, `spending_categories`, `totals`, `plain_english_summary`, and `confidence_notes`.
+- Nodes for the verified entity addresses and major counterparties.
+- Edges only for real transfers, token transfers, internal transfers, or contract calls with a real `txhash`.
+- Totals only from paginated API rows fetched in this run, with timeframe and budget limits stated in `_meta.gaps`.
+
+Use conservative labels for business categories:
+
+| Category | Rule |
+|----------|------|
+| `user_revenue` | Many inbound transfers from diverse wallets into a revenue/controller/registrar contract, especially contract calls with ETH value or token transfers tied to a user-facing contract |
+| `treasury_funding` | Transfers into a multisig, DAO contract, timelock, or known treasury address |
+| `treasury_spending` | Transfers out from treasury/multisig/timelock addresses |
+| `grant_or_contributor_payment` | Repeated or labeled outbound payments to wallets/contracts without exchange/router behavior; mark as uncertain unless nametag/sourcecode supports it |
+| `vendor_or_service_payment` | Outbound payments to named service/vendor addresses from nametag/sourcecode evidence |
+| `market_or_treasury_management` | Swaps, liquidity operations, custody moves, bridges, or CEX deposits from treasury addresses |
+| `unknown_income` / `unknown_spending` | Direction is known but business purpose is not supported by API evidence |
+
+Never invent new node `role` enum values for business categories. Use the existing node roles (`wallet`, `multisig`, `dao_contract`, `unknown_eoa`, `unknown_contract`, etc.) and put business categories in `notes` and `_meta.business_profile`.
 
 ## Output contract
 
@@ -155,8 +197,9 @@ Identify what the user gave you:
 | **Address — scammer** | 42-char hex, user says "scammer", "attacker", "this is the hacker" | Go to Step 0B (scammer-first flow) |
 | **Address — unknown role** | 42-char hex, no role context | Do **not** ask. Run both the Step 0A scoring scan and the Step 0B victim scan and assign roles from evidence only (this resolves role automatically — Execution mode) |
 | **Both address + tx** | User provides both | Use tx as seed, note address role, go to Step 1 |
+| **Business/entity profile** | User names a project/DAO/protocol/company/token and asks about income, revenue, fees, treasury, spending, expenses, grants, payroll, vendors, "as a business", or "how much" | Go to Step 0D (business/entity profile mode). Resolve candidate addresses first; if none can be resolved, ask once for scope addresses |
 | **Hypothesis / narrative** | Free-form sentence(s) describing what the user thinks happened — may contain 0x addresses, token names, role claims, flow direction | Go to Step 0C (hypothesis-first flow) |
-| **Neither** | No hash, address, or narrative given | If interactive, ask: "Can you share the victim wallet address, a suspicious tx hash, or describe what you think happened?" If non-interactive, stop and report that no valid input was provided |
+| **Neither** | No hash, address, entity name, or narrative given | If interactive, ask: "Can you share the victim wallet address, a suspicious tx hash, an entity name, or describe what you think happened?" If non-interactive, stop and report that no valid input was provided |
 
 Also collect:
 
@@ -165,6 +208,100 @@ Also collect:
 | **Chain** | Explicit name/ID in args, or infer from context. Default: Ethereum mainnet (chainid=1) |
 | **Approximate date/time** | Optional — narrows search window for address-first flows |
 | **Depth** | How many hops to follow. Default: **2**, hard cap **4**. If the user asks for more, clamp to 4 and note it in `_meta.gaps` |
+
+---
+
+## Step 0D — Business/entity profile mode
+
+Use this when the user wants to understand a DAO/protocol/project as a business: where money comes from, how much came in, where money goes, and how much was spent.
+
+### 0D-1. Resolve the entity scope
+
+Build a candidate address list in this order:
+
+1. **Prompt addresses.** Extract every valid `0x...` address from the user prompt.
+2. **Prompt ENS names.** If the prompt contains ENS names, resolve them only through an approved Etherscan API/MCP response if available. Never put the ENS name in an `address` field.
+3. **Known entity scope table.** If the entity name exactly matches an entry in the maintained table below, add those candidate addresses.
+4. **No candidates.** If the list is empty, stop and ask once: "Which treasury, timelock, controller, registrar, multisig, or revenue addresses should I include for this entity?"
+
+Every candidate is still only a hypothesis until validated by API data in this run.
+
+### 0D-2. Validate candidate addresses
+
+For each candidate address, call:
+
+```
+GET https://api.etherscan.io/v2/api?chainid={CHAINID}&module=proxy&action=eth_getCode&address={ADDRESS}&apikey={APIKEY}
+GET https://api.etherscan.io/v2/api?chainid={CHAINID}&module=account&action=balance&address={ADDRESS}&tag=latest&apikey={APIKEY}
+GET https://api.etherscan.io/v2/api?chainid={CHAINID}&module=account&action=txlist&address={ADDRESS}&startblock=0&endblock=99999999&page=1&offset=25&sort=desc&apikey={APIKEY}
+GET https://api.etherscan.io/v2/api?chainid={CHAINID}&module=account&action=tokentx&address={ADDRESS}&page=1&offset=25&sort=desc&apikey={APIKEY}
+```
+
+For contracts, also call:
+
+```
+GET https://api.etherscan.io/v2/api?chainid={CHAINID}&module=contract&action=getsourcecode&address={ADDRESS}&apikey={APIKEY}
+```
+
+Optionally call nametag if available under Step 2 rules. Include a candidate in the final scope only if at least one API response confirms the address exists or has transaction/balance/code evidence. If a known table label is not supported by sourcecode/nametag/transaction behavior, keep the address but mark the label as a hypothesis in `notes` and `_meta.business_profile.confidence_notes`.
+
+### 0D-3. Choose the business window
+
+If the user gives a date range, use it. Otherwise default to the most recent available activity within the call budget. State the effective block/time window in `_meta.business_profile.timeframe` and add `timeframe_limited` to `_meta.gaps` when full history was not fetched.
+
+### 0D-4. Classify income and spending
+
+For each validated scope address, paginate normal and token transfers using the Step 3 pagination rules, bounded by the chosen business window and the call budget. Classify rows:
+
+| Direction | Category | Rule |
+|-----------|----------|------|
+| Inbound | `user_revenue` | Many inbound payments from diverse wallets into a controller/revenue contract, or ETH/token value accompanying user-facing contract calls |
+| Inbound | `treasury_funding` | Inbound transfer to a treasury, multisig, timelock, or DAO contract |
+| Inbound | `unknown_income` | Money came in, but API evidence does not support a business purpose |
+| Outbound | `treasury_spending` | Outbound transfer from treasury/multisig/timelock |
+| Outbound | `grant_or_contributor_payment` | Repeated outbound payments to wallets/contracts that look like program or contributor payments; mark uncertain unless labels support it |
+| Outbound | `vendor_or_service_payment` | Outbound payments to named vendor/service addresses from nametag/sourcecode evidence |
+| Outbound | `market_or_treasury_management` | DEX, bridge, CEX, liquidity, custody, or treasury-management movements |
+| Outbound | `unknown_spending` | Money went out, but API evidence does not support a business purpose |
+
+### 0D-5. Summarize business profile inside JSON
+
+Populate `_meta.business_profile`:
+
+```json
+{
+  "entity_name": "ENS DAO",
+  "mode": "business_entity_profile",
+  "timeframe": "API-derived range or user-requested range",
+  "scope_addresses": [
+    {
+      "address": "0x...",
+      "label": "Treasury / registrar / controller / timelock",
+      "evidence": "sourcecode, nametag, balance, txlist, tokentx, or known table validated by API",
+      "confidence": "high|medium|low"
+    }
+  ],
+  "income_categories": [],
+  "spending_categories": [],
+  "totals": {
+    "inbound_by_token": {},
+    "outbound_by_token": {},
+    "net_by_token": {}
+  },
+  "plain_english_summary": [],
+  "confidence_notes": []
+}
+```
+
+Then continue to Step 2, Step 3, Step 4, Step 4B, and Step 5 with the validated scope addresses as seeds. Do not use scam-specific labels unless the API evidence supports them.
+
+### Maintained known entity scopes
+
+This table is optional and conservative. Entries are candidate scopes, not final truth. Each address must still be validated through Etherscan API calls in this run before it appears in the JSON.
+
+| Entity key | Chain | Candidate scope |
+|------------|-------|-----------------|
+| `ENS DAO` | Ethereum mainnet | Not preloaded. Ask for ENS DAO treasury/controller/timelock addresses unless the user provides them or an approved resolver returns them. |
 
 ---
 
@@ -484,16 +621,16 @@ Stop a branch when you hit:
 
 ---
 
-## Step 3B — Calculate total ETH scammed
+## Step 3B — Calculate financial totals
 
-After completing hop tracing, calculate the actual financial exposure. This step requires fetching **all pages** of transactions — do not skip after page 1.
+After completing hop tracing, calculate the actual financial exposure. In strict scam/hack cases, this estimates funds lost, received, forwarded, and retained. In business/entity profile mode, this estimates inbound income, outbound spending, and net movement for the validated scope addresses. This step requires fetching **all pages** within the selected block/time window — do not skip after page 1 unless constrained by the call budget.
 
 ### Paginate all normal transactions
 
 Repeat this call incrementing `page` until a page returns fewer than `offset` results (meaning you've reached the last page):
 
 ```
-GET https://api.etherscan.io/v2/api?chainid={CHAINID}&module=account&action=txlist&address={SCAMMER_OR_VICTIM_ADDRESS}&startblock=0&endblock=99999999&page={N}&offset=50&sort=asc&isError=0&apikey={APIKEY}
+GET https://api.etherscan.io/v2/api?chainid={CHAINID}&module=account&action=txlist&address={SUBJECT_OR_SCOPE_ADDRESS}&startblock={STARTBLOCK}&endblock={ENDBLOCK}&page={N}&offset=50&sort=asc&isError=0&apikey={APIKEY}
 ```
 
 Stop when a page has 0 results or fewer than 50, or when the 20-pages-per-address budget is hit (note `budget_exhausted` in `_meta.gaps`).
@@ -529,7 +666,7 @@ Compare the distribution of incoming amounts:
 
 ### Output the financial summary
 
-The financial summary lives **only in the JSON** — never as chat text (Hard rule 9). Add the following fields to the case JSON under a `"financials"` key:
+The financial summary lives **only in the JSON** — never as chat text (Hard rule 9). In strict scam/hack cases, add the following fields to the case JSON under a `"financials"` key:
 ```json
 "financials": {
   "total_eth_in_wei": "75700766123456789000000",
@@ -544,6 +681,34 @@ The financial summary lives **only in the JSON** — never as chat text (Hard ru
   "onchain_message_senders": 8,
   "laundering_flag": true,
   "note": "Pattern: few large funders + rapid scatter = laundering hub. Real victims are upstream."
+}
+```
+
+In business/entity profile mode, put totals under `_meta.business_profile.totals` and optionally mirror high-level totals in `_meta.financials`. Use token-grouped totals so mixed ETH/ERC-20 activity is not collapsed into a misleading single number:
+
+```json
+"totals": {
+  "inbound_by_token": {
+    "ETH": "123.45",
+    "USDC": "50000"
+  },
+  "outbound_by_token": {
+    "ETH": "100.00",
+    "USDC": "12500"
+  },
+  "net_by_token": {
+    "ETH": "23.45",
+    "USDC": "37500"
+  },
+  "category_totals": [
+    {
+      "category": "user_revenue",
+      "token": "ETH",
+      "amount": "120.00",
+      "txcount": 240,
+      "notes": "Summed from inbound API rows to validated revenue/controller addresses"
+    }
+  ]
 }
 ```
 
@@ -666,12 +831,14 @@ Also append a `_meta` block after the nodes/edges:
   "edges": [...],
   "_meta": {
     "created_at": "{ISO_TIMESTAMP}",
+    "mode": "strict_trace",
     "chain": "ethereum",
     "chainid": 1,
     "seed_txhashes": ["0x..."],
     "seed_addresses": ["0x..."],
     "hops_traced": 2,
     "financials": {},
+    "business_profile": null,
     "timeline": [],
     "patterns": [],
     "candidates": [],

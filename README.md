@@ -2,11 +2,18 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](./LICENSE)
 
-An installable [Agent Skill](https://docs.claude.com/en/docs/agents-and-tools/agent-skills/overview) that maps **any** on-chain money flow. Give it a **transaction hash** or a **wallet address**, and it calls the **Etherscan API V2** to trace the flow and write a single **Etherscan Flow Case** JSON (`nodes` + `edges`) you can import straight into the [Etherscan Flow](https://etherscan.io) canvas.
+An installable [Agent Skill](https://docs.claude.com/en/docs/agents-and-tools/agent-skills/overview) that maps **any** on-chain money flow. Give it a **transaction hash**, a **wallet address**, or a resolvable **business/entity scope**, and it calls the **Etherscan API V2** to trace the flow and write a single **Etherscan Flow Case** JSON (`nodes` + `edges`) you can import straight into the [Etherscan Flow](https://etherscan.io) canvas.
 
 Use it for a plain transfer, a token launch, a DeFi swap route, an NFT mint — or a full scam/hack investigation (victim → attacker → laundering hops → CEX deposit).
 
 Output is **JSON only** — every node and edge is grounded in a real API response, never invented.
+
+The skill has two modes:
+
+- **Strict trace mode:** start from a tx hash or address and follow the money.
+- **Business/entity profile mode:** start from a DAO/protocol/project/business scope, resolve it to verified addresses, then summarize income, spending, categories, and totals inside the JSON.
+
+Named entities such as `ENS DAO` are treated as scope hypotheses, not evidence. The skill must resolve them to real `0x...` addresses from user-provided addresses, API-resolved ENS names, or a maintained known-entity scope table before it can write a case.
 
 ## How it works
 
@@ -115,6 +122,14 @@ trace this scam 0x<txhash>
 follow the money from this victim wallet 0x<address>
 this is the scammer address 0x<address>, find the victims
 build a case for this hack 0x<address> apikey=YOUR_KEY
+```
+
+Or profile a DAO/protocol/business from a verified scope:
+
+```
+show ENS DAO as a business using these treasury, controller, and timelock addresses: 0x<address> 0x<address>
+map income and spending for this protocol treasury 0x<address>
+show where this DAO gets income and how it spends money, with totals, apikey=YOUR_KEY 0x<address>
 ```
 
 You get a JSON file. Open [Etherscan Flow](https://etherscan.io), choose **Import**, and paste it — the schema maps one-to-one, no reformatting.
