@@ -19,6 +19,23 @@ Turn a seed transaction hash **or a wallet address** into an Etherscan Flow Case
 8. **Call budget.** Max 100 API calls per run, max 20 pages per address. On exhaustion, stop tracing and add `budget_exhausted` to `_meta.gaps`.
 9. **JSON is the only deliverable.** All findings — candidates, financials, patterns, timeline — go inside the JSON, never into chat text. The only chat output is the saved file path (plus blocking input questions in Step 0 when the platform is interactive).
 10. **Every edge needs a real `txhash` from an API response.** No exceptions.
+11. **Run to completion — do not ask "proceed?".** Once you have an entry point and a key source, execute Steps 1–5 straight through in one go. Never pause between steps to ask the user "should I continue?", "proceed?", "want me to trace the next hop?", or to report interim progress. Every API call here is a **read-only, side-effect-free HTTP GET** — there is nothing to confirm before running one. The only permitted stop is a genuine *blocker* (see Execution mode below); everything else uses the documented default and keeps going.
+
+## Execution mode — autonomous by default
+
+This skill runs unattended from entry point to saved JSON. When any step says "if interactive, ask …", treat that as a **last resort**, not a checkpoint: prefer the documented non-interactive default and continue without pausing. You may stop to ask the user **at most once**, and only for a true blocker:
+
+| Blocker | Only if | Otherwise (default — do NOT ask) |
+|---------|---------|-----------------------------------|
+| No usable input | No tx hash, address, or narrative was given at all | — (cannot proceed) |
+| No API key | Interactive platform AND no key resolved from any source (Step 0) | Try the demo key once, then stop only if it's rejected |
+| Ambiguous entry role | *Never a reason to stop* | Run both the 0A and 0B scans and assign roles from evidence |
+| Which candidate tx | *Never a reason to stop* | Take the highest-scoring candidate; record the rest in `_meta.candidates` |
+| Depth / chain / date | *Never a reason to stop* | Use defaults: depth 2, chainid 1, full block range |
+
+When you must ask, **bundle every open question into that single message**, then act on the reply — or on the defaults if the platform is non-interactive. Do not serialize questions one per turn.
+
+> If your runtime prompts *you* for permission on each network/shell call, that is a harness setting, not this skill asking — these are all read-only GETs to a single host (`api.etherscan.io`); allow them for the run so the trace isn't interrupted call-by-call.
 
 ## What you are doing
 
@@ -130,7 +147,7 @@ Identify what the user gave you:
 | **Tx hash** | 66-char hex starting with `0x` | Go to Step 1 (tx-first flow) |
 | **Address — victim** | 42-char hex, user says "victim", "got scammed", "got hacked" | Go to Step 0A (address-first flow) |
 | **Address — scammer** | 42-char hex, user says "scammer", "attacker", "this is the hacker" | Go to Step 0B (scammer-first flow) |
-| **Address — unknown role** | 42-char hex, no role context | If interactive, ask: "Is this the victim or the scammer/attacker address?" If non-interactive, run both the Step 0A scoring scan and the Step 0B victim scan and assign roles from evidence only |
+| **Address — unknown role** | 42-char hex, no role context | Do **not** ask. Run both the Step 0A scoring scan and the Step 0B victim scan and assign roles from evidence only (this resolves role automatically — Execution mode) |
 | **Both address + tx** | User provides both | Use tx as seed, note address role, go to Step 1 |
 | **Hypothesis / narrative** | Free-form sentence(s) describing what the user thinks happened — may contain 0x addresses, token names, role claims, flow direction | Go to Step 0C (hypothesis-first flow) |
 | **Neither** | No hash, address, or narrative given | If interactive, ask: "Can you share the victim wallet address, a suspicious tx hash, or describe what you think happened?" If non-interactive, stop and report that no valid input was provided |
@@ -184,7 +201,7 @@ GET https://api.etherscan.io/v2/api?chainid={CHAINID}&module=account&action=toke
 
 If the user gave an approximate time, filter to a ±12 hour window first.
 
-Record the top 3 candidates (one line each) in `_meta.candidates`. If only one candidate scores ≥ 5 and the next scores ≤ 2, proceed with it automatically and note your choice. Otherwise: if interactive, ask the user to pick; if non-interactive, proceed with the highest-scoring candidate and note the ambiguity in `_meta.gaps`.
+Record the top 3 candidates (one line each) in `_meta.candidates`. **Do not ask the user to pick** — proceed automatically with the highest-scoring candidate. If the top two are close (within 2 points), note the ambiguity in `_meta.gaps` and continue anyway. Asking to choose a candidate is never a reason to pause (Execution mode).
 
 ### 0A-5. Continue
 
