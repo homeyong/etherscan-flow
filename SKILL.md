@@ -1,11 +1,11 @@
 ---
 name: etherscan-flow
-description: Given one or more transaction hashes OR a victim/scammer address suspected in a scam/hack, call the Etherscan API V2 to trace the full money flow — victim → attacker → laundering hops → CEX deposit — and write a single Etherscan Flow Case JSON file (nodes + edges schema). Output is JSON only; no chat summary or prose. Use when the user says "trace this tx", "follow the money", "build a case for this scam", "investigate this hack", "this address got hacked", "victim address", "this is a scammer address", or pastes a 0x… hash or address and asks you to investigate or trace it. Works on Ethereum mainnet by default; the user can specify a different chain. Accepts optional apikey= argument.
+description: Given one or more transaction hashes OR a wallet/contract address, call the Etherscan API V2 to trace the on-chain money flow and write a single Etherscan Flow Case JSON file (nodes + edges schema) — for ANY flow: a plain transfer, a token launch, a DeFi swap/route, an NFT mint, or a full scam/hack investigation (victim → attacker → laundering hops → CEX deposit). Output is JSON only; no chat summary or prose. Use when the user says "trace this tx", "visualize this transaction", "show the flow of", "map this address", "follow the money", "build a case for this scam", "investigate this hack", or pastes a 0x… hash or address and asks you to trace, visualize, or investigate it. Works on Ethereum mainnet by default; the user can specify a different chain. Accepts optional apikey= argument.
 ---
 
 # Etherscan Flow — Transaction Case Tracer
 
-Turn a seed transaction hash **or a wallet address** (victim or scammer) into a full investigation case: timeline, entity classification, fund flows, and a JSON case-workspace payload ready for the Case Workspace feature.
+Turn a seed transaction hash **or a wallet address** into an Etherscan Flow Case: entities, fund flows, and a JSON payload ready to import into the Etherscan Flow canvas. Use it for any on-chain flow — a plain transfer, a token launch, a DeFi route, an NFT mint — or a full scam/hack investigation (victim → attacker → laundering → CEX). Scam-tracing is one use case, not the only one.
 
 ## Hard rules (non-negotiable — apply on every run, on every platform)
 

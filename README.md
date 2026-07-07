@@ -2,7 +2,9 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](./LICENSE)
 
-An installable [Agent Skill](https://docs.claude.com/en/docs/agents-and-tools/agent-skills/overview) that turns an AI agent into an on-chain investigator. Give it a **transaction hash** or a **wallet address**, and it calls the **Etherscan API V2** to trace the money flow — victim → attacker → laundering hops → CEX deposit — and writes a single **Etherscan Flow Case** JSON (`nodes` + `edges`) you can import straight into the [Etherscan Flow](https://etherscan.io) canvas.
+An installable [Agent Skill](https://docs.claude.com/en/docs/agents-and-tools/agent-skills/overview) that maps **any** on-chain money flow. Give it a **transaction hash** or a **wallet address**, and it calls the **Etherscan API V2** to trace the flow and write a single **Etherscan Flow Case** JSON (`nodes` + `edges`) you can import straight into the [Etherscan Flow](https://etherscan.io) canvas.
+
+Use it for a plain transfer, a token launch, a DeFi swap route, an NFT mint — or a full scam/hack investigation (victim → attacker → laundering hops → CEX deposit).
 
 Output is **JSON only** — every node and edge is grounded in a real API response, never invented.
 
