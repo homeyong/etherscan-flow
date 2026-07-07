@@ -2,90 +2,145 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](./LICENSE)
 
-An installable [Agent Skill](https://docs.claude.com/en/docs/agents-and-tools/agent-skills/overview) that turns any AI agent into an on-chain investigator. Give it a transaction hash or a wallet address, and it calls the **Etherscan API V2** to trace the full money flow — victim → attacker → laundering hops → CEX deposit — and writes a single **Etherscan Flow Case** JSON file (a `nodes` + `edges` graph) ready to drop into the [Etherscan Flow](https://etherscan.io) visualization canvas.
+An installable [Agent Skill](https://docs.claude.com/en/docs/agents-and-tools/agent-skills/overview) that turns an AI agent into an on-chain investigator. Give it a **transaction hash** or a **wallet address**, and it calls the **Etherscan API V2** to trace the money flow — victim → attacker → laundering hops → CEX deposit — and writes a single **Etherscan Flow Case** JSON (`nodes` + `edges`) you can import straight into the [Etherscan Flow](https://etherscan.io) canvas.
 
-Works with Claude Code, Claude.ai, and other agents that support the skills format. Output is **JSON only** — no chat prose, no hallucinated edges: every node and edge is grounded in a real API response.
+Output is **JSON only** — every node and edge is grounded in a real API response, never invented.
 
-## What it does
+## How it works
 
-1. **Validates** every address / tx hash / chain id before making a call.
-2. **Resolves credentials** securely (see below) — the key never has to touch the chat.
-3. **Traces the flow** via Etherscan API V2 (or an Etherscan MCP server): tx details, internal txs, ERC-20/721 transfers.
-4. **Classifies** each address — victim, attacker, CEX deposit, mixer, bridge, DEX router, sweeper bot… — using API evidence, never a user's claim alone.
-5. **Follows the money** up to N hops (default 2, cap 4), stopping at CEX deposits, mixers, and bridges.
-6. **Detects patterns** — approval drains, flash-loan attacks, rug pulls, wash trading, rapid scatter, mixer usage, bridge hops, CEX fast deposits.
-7. **Outputs** a single `case-{id}-flow.json` in the Etherscan Flow Case schema.
+```mermaid
+flowchart LR
+    A["You paste a tx hash<br/>or wallet address"] --> B["etherscan-flow skill<br/>(runs inside your agent)"]
+    B --> C["Etherscan API V2<br/>or Etherscan MCP"]
+    C --> D["Trace flow · classify<br/>entities · follow hops"]
+    D --> E["Etherscan Flow Case JSON<br/>nodes + edges"]
+    E --> F["Import into the<br/>Etherscan Flow canvas"]
+```
 
-**Supported chains:** Ethereum (default), BNB Chain, Polygon, Arbitrum, Optimism, Base, Avalanche, Fantom.
+Supported chains: **Ethereum** (default), BNB Chain, Polygon, Arbitrum, Optimism, Base, Avalanche, Fantom.
 
-## Installation
+## Quick start
 
-### Claude Code / CLI agents
+Pick your tool. Steps are given for **macOS**, **Linux**, and **Windows**.
 
-Clone into your agent's skills directory:
+<details open>
+<summary><b>Claude Code (CLI)</b></summary>
 
+Clone into your personal skills folder, then invoke `/etherscan-flow`.
+
+**macOS / Linux**
 ```bash
 git clone https://github.com/homeyong/etherscan-flow.git ~/.claude/skills/etherscan-flow
 ```
 
-The skill is then available as `/etherscan-flow`.
+**Windows (PowerShell)**
+```powershell
+git clone https://github.com/homeyong/etherscan-flow.git "$env:USERPROFILE\.claude\skills\etherscan-flow"
+```
 
-### Claude.ai
+Then in Claude Code: `/etherscan-flow trace this scam 0x…`
+</details>
 
-Download this repository as a ZIP, then upload it at **claude.ai/customize/skills**. On paid plans, allowlist `api.etherscan.io` in your skill's network settings so it can reach the API.
+<details>
+<summary><b>Codex CLI</b></summary>
 
-## Providing your Etherscan API key
+Codex has no dedicated skills folder yet, so you load the skill as context.
 
-An Etherscan API key is read-only and rate-limited, but you should still keep it out of the chat transcript. The skill resolves credentials in this order — the first that applies wins:
+**macOS / Linux / Windows**
+```bash
+git clone https://github.com/homeyong/etherscan-flow.git
+```
 
-1. **Inline override** — `apikey=YOUR_KEY` anywhere in your prompt (per-run override).
-2. **Etherscan MCP server** — if Etherscan MCP tools are available, the skill uses them and never handles a key at all (most secure).
-3. **Environment variable** — `export ETHERSCAN_API_KEY=…`; referenced by name in the shell so the value never enters the model's context.
-4. **Local key file** — `~/.etherscan/key`.
-5. **Demo key** — the rate-limited free tier, as a last resort.
+Then either add one line to your project's `AGENTS.md`:
+```
+For any on-chain tracing request, follow ./etherscan-flow/SKILL.md exactly.
+```
+…or paste the contents of `SKILL.md` at the start of a Codex session.
+</details>
+
+<details>
+<summary><b>Claude.ai — the web chat UI</b></summary>
+
+> **Note:** "Claude.ai" here means the **web chat interface** at [claude.ai](https://claude.ai), *not* the Claude Code CLI.
+
+1. Download this repo as a ZIP (green **Code** button → **Download ZIP**).
+2. Go to **claude.ai/customize/skills** and upload it.
+3. On paid plans, allowlist `api.etherscan.io` in the skill's network settings so it can reach the API.
+
+⚠️ On the web UI you can only supply a key by **pasting it in chat** or via a **connector** — see the note below on what that means for privacy.
+</details>
+
+## Your Etherscan API key — and how private it really is
+
+An Etherscan key is read-only and rate-limited, so leaking one is low-stakes — but keep it out of the chat transcript where you reasonably can. The skill picks a key source in this order, first match wins:
+
+**inline `apikey=` → Etherscan MCP → `ETHERSCAN_API_KEY` env var → local key file → demo key**
+
+**Where the key actually goes depends on where you run it:**
+
+```mermaid
+flowchart LR
+    subgraph L["🖥️ Local agent — Claude Code / Codex CLI"]
+        k1["key in env var / file /<br/>local MCP server"]:::safe -->|referenced by name in a shell command| c1["API call"]
+        c1 -->|"request + results only"| ai1["AI provider"]
+    end
+    subgraph W["🌐 claude.ai web chat UI"]
+        inl["paste apikey= in chat"]:::warn -->|"key sits in the transcript"| ai2["AI provider"]
+        conn["MCP connector"]:::safe -->|"key held server-side"| ai2
+    end
+    classDef safe fill:#dcfce7,stroke:#16a34a,color:#065f46;
+    classDef warn fill:#fee2e2,stroke:#dc2626,color:#7f1d1d;
+```
+
+| Where you run it | How you give the key | Does the key value reach the AI provider? |
+|---|---|---|
+| **Claude Code / Codex** (local) | env var, local file, or local MCP | **No** — a shell command references it by name; the model only sees the request and the API results |
+| **Any tool** | inline `apikey=…` | **Yes** — it's in the chat. Use a throwaway free-tier key |
+| **claude.ai web** | MCP / connector | **No** — the connector holds it server-side |
+| **claude.ai web** | inline `apikey=…` | **Yes** — it's in the transcript |
+
+**Be honest with yourself about the boundary:** the local paths keep the *secret key* off the wire — but they do **not** make the investigation private. The addresses, hashes, and Etherscan responses still travel through your AI provider (Anthropic / OpenAI) as normal model context, exactly like any other prompt. So the guarantee is *"your key stays on your machine,"* not *"nothing leaves your machine."* Full local privacy would require running a local model too, which is out of scope here.
 
 Get a free key at [etherscan.io/apis](https://etherscan.io/apis).
 
 ## Usage
 
-Trigger it by pasting a hash or address and asking to investigate:
+Paste a hash or address and ask to investigate:
 
 ```
 trace this scam 0x<txhash>
 follow the money from this victim wallet 0x<address>
-build a case for this hack 0x<address> apikey=YOUR_KEY
 this is the scammer address 0x<address>, find the victims
+build a case for this hack 0x<address> apikey=YOUR_KEY
 ```
 
-The result is a JSON file. Open the [Etherscan Flow](https://etherscan.io) tool, choose **Import**, and paste it — the schema maps one-to-one, no reformatting needed.
+You get a JSON file. Open [Etherscan Flow](https://etherscan.io), choose **Import**, and paste it — the schema maps one-to-one, no reformatting.
 
 ## Output schema
-
-The skill emits the native **Etherscan Flow Case** schema:
 
 ```json
 {
   "id": "case-a1b2c3d4",
   "name": "0xabcd… — approval drain traced to Binance 14",
   "schemaVersion": 1,
-  "nodes": [ { "id": "victim01", "address": "0x…", "label": "Victim", "role": "victim_wallet", "hop": 0, "balance": "0.0 ETH", "notes": "…", "x": 0, "y": 0 } ],
-  "edges": [ { "id": "e1", "source": "victim01", "target": "atk01", "amount": "5000", "token": "USDT", "txcount": 1, "type": "token_transfer", "txhash": "0x…", "timestamp": "2026-03-15T10:23:00Z" } ],
-  "_meta": { "chain": "ethereum", "financials": {}, "timeline": [], "patterns": [], "gaps": [], "disclaimer": "…" }
+  "nodes": [ { "id": "victim01", "address": "0x…", "role": "victim_wallet", "hop": 0, "label": "Victim", "notes": "…" } ],
+  "edges": [ { "id": "e1", "source": "victim01", "target": "atk01", "amount": "5000", "token": "USDT", "type": "token_transfer", "txhash": "0x…" } ],
+  "_meta": { "chain": "ethereum", "patterns": [], "gaps": [], "disclaimer": "…" }
 }
 ```
 
-Roles, labels, and notes are AI inference over public Etherscan data — **not** Etherscan verdicts, accusations, or legal findings. See the disclaimer in every `_meta` block.
+Roles, labels, and notes are AI inference over public Etherscan data — **not** Etherscan verdicts, accusations, or legal findings.
 
-## Files
+## Tool coverage
 
-| File | Purpose |
-|------|---------|
-| [`SKILL.md`](./SKILL.md) | The skill itself — instructions, API workflows, scoring tables, output contract |
-| `LICENSE` | MIT |
+| Tool | v1 |
+|---|---|
+| Claude Code | ✅ |
+| Codex CLI | ✅ |
+| Claude.ai (web) | ✅ |
+| Gemini CLI, others | later — [open an issue](https://github.com/homeyong/etherscan-flow/issues) if you want one |
 
-## Support
-
-Issues and feedback: please open a [GitHub issue](https://github.com/homeyong/etherscan-flow/issues).
+Coverage grows with demand — tell us what you use.
 
 ## License
 
