@@ -191,9 +191,9 @@ There are no per-call prompts here; instead, on paid plans you must **allowlist 
   "id": "case-a1b2c3d4",
   "name": "0xabcd… — approval drain traced to Binance 14",
   "schemaVersion": 1,
-  "nodes": [ { "id": "victim01", "address": "0x…", "role": "victim_wallet", "hop": 0, "label": "Victim", "notes": "…" } ],
-  "edges": [ { "id": "e1", "source": "victim01", "target": "atk01", "amount": "5000", "token": "USDT", "type": "token_transfer", "txhash": "0x…" } ],
-  "_meta": { "chain": "ethereum", "patterns": [], "gaps": [], "disclaimer": "…" }
+  "nodes": [ { "id": "victim01", "address": "0x…", "chainid": 1, "role": "victim_wallet", "hop": 0, "label": "Victim", "notes": "…" } ],
+  "edges": [ { "id": "e1", "source": "victim01", "target": "atk01", "amount": "5000", "token": "USDT", "type": "token_transfer", "txhash": "0x…", "chainid": 1 } ],
+  "_meta": { "chain": "ethereum", "chainid": 1, "chains": [{ "chain": "ethereum", "chainid": 1 }], "patterns": [], "gaps": [], "disclaimer": "…" }
 }
 ```
 

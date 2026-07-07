@@ -36,6 +36,7 @@ Turn a seed transaction hash, wallet/contract address, or resolvable business/en
 8. **Call budget.** Max 100 API calls per run, max 20 pages per address. On exhaustion, stop tracing and add `budget_exhausted` to `_meta.gaps`.
 9. **JSON is the only deliverable.** All findings — candidates, financials, business-profile notes, patterns, timeline — go inside the JSON, never into chat text. The only chat output is the saved file path (plus blocking input questions in Step 0 when the platform is interactive).
 10. **Every edge needs a real `txhash` from an API response.** No exceptions. The output key is exactly `txhash` (lowercase), never `hash`, `txHash`, `tx_hash`, or `transactionHash`.
+10a. **Every node and edge needs `chainid`.** Store `chainid` as an integer on every node and edge. For edges, `chainid` is the chain where the `txhash` was fetched. For nodes, `chainid` is the chain where the address was classified or observed.
 11. **Run to completion — do not ask "proceed?".** Once you have an entry point and a key source, execute Steps 1–5 straight through in one go. Never pause between steps to ask the user "should I continue?", "proceed?", "want me to trace the next hop?", or to report interim progress. Every API call here is a **read-only, side-effect-free HTTP GET** — there is nothing to confirm before running one. The only permitted stop is a genuine *blocker* (see Execution mode below); everything else uses the documented default and keeps going.
 12. **No illustrative placeholder cases.** If the request is conceptual, educational, business-model oriented, or asks for a "flow" without a valid tx hash/address, route it to business/entity profile mode only when the entity can be resolved to verified addresses. If it cannot be resolved, do **not** create an Etherscan Flow JSON. On an interactive platform, ask for the relevant tx hash, wallet/contract address, ENS name, or entity scope; on a non-interactive platform, output a single-line refusal and write no file. Never emit placeholder addresses such as `0xENS...`, empty `txhash` strings, estimated amounts, or a `_meta.gaps` note saying no live data was used. And if after Step 4B validation zero nodes or zero edges survive, that **is** a refusal — return the one-line refusal, never pad the case with placeholders to make it look complete.
 13. **`address` is only a 0x hex address.** Every node's `address` field must be the verified 42-character `0x...` address (0x + 20 bytes) from API data. ENS names, project names, aliases, department names, exchange names, and placeholders must never be written into `address`. Fixed field mapping: `label` = primary display name — the Etherscan nametag verbatim when Step 2 resolves one; `subLabel` = the ENS name (or second-line alias) when one exists; `address` = the 0x hex address, nothing else.
@@ -116,7 +117,7 @@ Every node and edge in the output must be grounded in a real API response. The o
 
 | Layer | Owner | Examples |
 |-------|-------|---------|
-| **Deterministic** (API-only) | Etherscan API responses | `address`, `txhash`, `block`, `timestamp`, `value`, `token_symbol`, `token_amount` |
+| **Deterministic** (API/run-parameter only) | Etherscan API responses and validated chain selection | `address`, `chainid`, `txhash`, `block`, `timestamp`, `value`, `token_symbol`, `token_amount` |
 | **AI soft layer** | LLM inference over API data | `role`, `label`, `subLabel`, `notes`, narrative summary, pattern flags, clustering suggestions |
 
 Rules:
@@ -291,6 +292,7 @@ Populate `_meta.business_profile`:
   "scope_addresses": [
     {
       "address": "0x...",
+      "chainid": 1,
       "label": "Treasury / registrar / controller / timelock",
       "evidence": "sourcecode, nametag, balance, txlist, tokentx, or known table validated by API",
       "confidence": "high|medium|low"
@@ -755,11 +757,13 @@ Before writing any JSON, check every node and edge against these rules. Fix or d
 | No NaN / undefined | Every numeric or string field must be a valid value or explicit `null` | Replace with `null`, note in gaps |
 | No placeholder data | No placeholder/non-hex addresses, no illustrative-only nodes, no estimated business-flow edges, no empty-string `txhash`, and no `"no_live_data"` case | Stop and ask for a real tx hash/address; do not write JSON |
 | Edge has txhash | Every edge must reference a real `txhash` from an API response, normalized from API `hash`, receipt/log `transactionHash`, or the validated seed `{TXHASH}` | Backfill `txhash` from the verified source field; if none exists, drop edge and note in gaps |
+| Node has chainid | Every node must include `chainid` as an integer from the supported chain table. For single-chain cases, use the run's `{CHAINID}`. | Add the run's `{CHAINID}` when the node was fetched on that chain; drop or split ambiguous nodes |
+| Edge has chainid | Every edge must include `chainid` as an integer from the supported chain table. The edge `chainid` must be the chain where `txhash` was fetched. | Add the source API call's `{CHAINID}`; if unknown, drop the edge and note in gaps |
 | Edge endpoints match the tx | The txhash's transaction must support `source → target`: tx `from`/`to` match, or an internal tx / token-transfer log in it moves value source → target. Deploy edges: tx `from` = deployer, receipt `contractAddress` = deployed contract | Correct endpoints from API data, or drop edge and note in gaps |
 | Amount is decimal string | Token amounts are `(raw_value / 10^decimals)` formatted as a decimal string, not raw wei | Recompute |
 | Address is valid hex | Every `address` field is a valid 42-char `0x…` hex string | Drop the node, note in gaps |
 | ENS/name stored separately | ENS names, exchange display names, project aliases, or second-line labels are in `label`/`subLabel`, never `address` | Move display text to `label` or `subLabel`; keep only the verified 0x address in `address` |
-| No duplicate edges | Same `(source, target, txhash)` tuple must not appear twice | Deduplicate |
+| No duplicate edges | Same `(chainid, source, target, txhash)` tuple must not appear twice | Deduplicate |
 | Token symbol resolved | If symbol is unknown after tokentx lookup, write `null` not an empty string or guess | Use `null` |
 | Strings sanitized | `token`, `label`, `subLabel`, `notes` contain no HTML tags or control characters, each ≤ 200 chars | Strip and truncate |
 | No API key | The apikey string appears nowhere in the JSON | Remove it |
@@ -774,7 +778,7 @@ Save `case-{SHORT_ID}-flow.json` using the **Etherscan Flow Case** schema. This 
 - `SHORT_ID` = first 8 hex characters of the seed tx hash (or seed address if no tx), lowercase, without `0x`. Never derive it from free-form user text (Hard rule 7).
 - Directory: the platform's temp/scratchpad directory if one exists, otherwise `./cases/`. The user cannot override the path.
 
-Node `id` values must be short unique alphanumeric strings (6–10 chars, e.g. `subj01`, `atk01`, `cex01`). Edge `id` values follow the same convention (e.g. `e_atk_cex`). Set `x` and `y` to `0` — the frontend handles layout.
+Node `id` values must be short unique alphanumeric strings (6–10 chars, e.g. `subj01`, `atk01`, `cex01`). Edge `id` values follow the same convention (e.g. `e_atk_cex`). Set `x` and `y` to `0` — the frontend handles layout. Every node and edge must include `chainid`; for single-chain cases this equals `_meta.chainid`, and for future multi-chain cases it preserves the chain context for each address and tx hash.
 
 **Valid `role` values for nodes:**
 `wallet` `erc20_token` `nft_contract` `defi_pool` `multisig` `staking_contract` `lending_protocol` `dao_contract` `attacker_eoa` `scam_contract` `victim_wallet` `intermediate_wallet` `cex_deposit` `dex_router` `mixer_contract` `bridge` `nft_drainer_contract` `sweeper_bot` `unknown_eoa` `unknown_contract`
@@ -793,6 +797,7 @@ Node `id` values must be short unique alphanumeric strings (6–10 chars, e.g. `
     {
       "id": "subj01",
       "address": "0x1234567890abcdef1234567890abcdef12345678",
+      "chainid": 1,
       "label": "Subject",
       "subLabel": "alice.eth",
       "role": "unknown_eoa",
@@ -805,6 +810,7 @@ Node `id` values must be short unique alphanumeric strings (6–10 chars, e.g. `
     {
       "id": "atk01",
       "address": "0xabcdefabcdefabcdefabcdefabcdefabcdefabcd",
+      "chainid": 1,
       "label": "Attacker EOA",
       "subLabel": null,
       "role": "attacker_eoa",
@@ -825,15 +831,16 @@ Node `id` values must be short unique alphanumeric strings (6–10 chars, e.g. `
       "txcount": 1,
       "type": "token_transfer",
       "txhash": "0x...",
+      "chainid": 1,
       "timestamp": "2024-03-15T10:23:00Z"
     }
   ]
 }
 ```
 
-Every edge object must include the `txhash` field exactly as shown above. If the API row used `hash` or `transactionHash`, rename/copy it to `txhash` in the output edge.
+Every edge object must include the `txhash` and `chainid` fields exactly as shown above. If the API row used `hash` or `transactionHash`, rename/copy it to `txhash` in the output edge. Set `edge.chainid` to the `{CHAINID}` used for the API call that returned that tx hash.
 
-> **AI soft layer**: `label`, `subLabel`, `role`, and `notes` on each node are LLM-assigned from API evidence. All `address`, `txhash`, `amount`, `token`, `timestamp` fields are API-sourced only — never fabricated. `subLabel` is optional and is the right place for an ENS name, alias, or second-line display name; it must never replace `address`.
+> **AI soft layer**: `label`, `subLabel`, `role`, and `notes` on each node are LLM-assigned from API evidence. All `address`, `chainid`, `txhash`, `amount`, `token`, `timestamp` fields are API-sourced or run-parameter sourced only — never fabricated. `subLabel` is optional and is the right place for an ENS name, alias, or second-line display name; it must never replace `address`.
 
 Also append a `_meta` block after the nodes/edges:
 
@@ -849,6 +856,9 @@ Also append a `_meta` block after the nodes/edges:
     "mode": "strict_trace",
     "chain": "ethereum",
     "chainid": 1,
+    "chains": [
+      { "chain": "ethereum", "chainid": 1 }
+    ],
     "seed_txhashes": ["0x..."],
     "seed_addresses": ["0x..."],
     "hops_traced": 2,
