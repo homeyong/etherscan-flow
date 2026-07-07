@@ -94,11 +94,23 @@ This skill supports two transports: **MCP** (call Etherscan MCP tools; the key l
 
 2. **Etherscan MCP server — preferred when no explicit key.** If Etherscan MCP tools (e.g. `mcp__etherscan__*`) are available in this session, use the **MCP** transport: call those tools for every data fetch and do not build HTTP URLs or handle a key at all. This is the most secure path (the key never touches your context) — prefer it whenever it is present.
 
-3. **`ETHERSCAN_API_KEY` environment variable — HTTP transport.** Check presence *without revealing the value*:
-   ```
+3. **`ETHERSCAN_API_KEY` environment variable — HTTP transport.** Check presence *without revealing the value*, using the syntax for the actual shell (detect from platform / `$SHELL` / `$PSVersionTable` — do not assume bash on Windows):
+
+   **POSIX shells (bash/zsh — macOS, Linux):**
+   ```bash
    test -n "$ETHERSCAN_API_KEY" && echo SET || echo UNSET
    ```
-   If SET, reference it **by name** in every request (`…&apikey=$ETHERSCAN_API_KEY`) so the shell expands it at execution and the literal key never enters your context or the transcript. Never `echo`, `printenv`, or otherwise print its value.
+   If SET, reference it **by name** in every request (`…&apikey=$ETHERSCAN_API_KEY`) so the shell expands it at execution.
+
+   **PowerShell (Windows, or pwsh anywhere):**
+   ```powershell
+   if ($env:ETHERSCAN_API_KEY) { 'SET' } else { 'UNSET' }
+   ```
+   If SET, reference it by name as `$env:ETHERSCAN_API_KEY` — e.g. build the URL with `"...&apikey=$env:ETHERSCAN_API_KEY"` so PowerShell expands it at execution.
+
+   **Windows cmd.exe:** `if defined ETHERSCAN_API_KEY (echo SET) else (echo UNSET)`; reference as `%ETHERSCAN_API_KEY%`.
+
+   In every case the variable is expanded **by the shell at call time** so the literal key never enters your context or the transcript. Never `echo`, `printenv`, `Write-Host $env:ETHERSCAN_API_KEY`, or otherwise print its value. Picking the wrong shell's syntax (e.g. `test -n` in PowerShell) silently reports UNSET and wrongly falls through to the demo key — match the shell.
 
 4. **Local key file — HTTP transport.** If `~/.etherscan/key` (or a path the user names) exists, read it via a shell command at call time and use it the same way. Never paste its contents into your reply.
 
@@ -314,10 +326,31 @@ GET https://api.etherscan.io/v2/api?chainid={CHAINID}&module=proxy&action=eth_ge
 GET https://api.etherscan.io/v2/api?chainid={CHAINID}&module=account&action=txlistinternal&txhash={TXHASH}&apikey={APIKEY}
 ```
 
-### Get token transfers around the seed block
+### Extract every asset movement from the receipt logs (do this first)
+
+The receipt you just fetched contains a `logs` array — parse it, don't rely on the account-level token feeds alone. For each log, match `topics[0]` against the standard event signatures and decode the indexed `from`/`to` (topics) and the value/tokenId:
+
+| Standard | `topics[0]` (event signature hash) | Decode |
+|----------|-----------------------------------|--------|
+| ERC-20 / ERC-721 `Transfer` | `0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef` | 3 topics + data = ERC-20 (amount in data); 4 topics = ERC-721 (tokenId in `topics[3]`) |
+| ERC-1155 `TransferSingle` | `0xc3d58168c5ae7397731d063d5bbf3d657854427343f4c083240f7aacaa2d0f62` | operator, from, to (topics); id + value (data) |
+| ERC-1155 `TransferBatch` | `0x4a39dc06d4c0dbc64b70af90fd698a233a518aa5d07e595d983b8c0526c8f7fb` | operator, from, to (topics); id[]+value[] (data) |
+| ERC-20 `Approval(address,address,uint256)` | `0x8c5be1e5ebec7d5bd14f71427d1e84f3dd0314c0f7b2291e5b200ac8c7c3b925` | record as `approve` edge; owner, spender (topics), allowance (data) |
+| ERC-721/1155 `ApprovalForAll(address,address,bool)` | `0x17307eab39ab6107e8899845ad3d59bd9653f200f220920489ca2b5937696c31` | record as `approve` edge; owner, operator (topics), approved bool (data) |
+
+Every address that appears as `from`/`to`/operator/spender in these logs goes into the **entity set**, and each decoded transfer becomes a candidate edge with the seed tx's real `txhash` (it moves value inside this tx — Data integrity rule). This is what captures NFT mints, ERC-1155 flows, and multi-contract swap/router legs that a single ERC-20 feed would miss.
+
+### Cross-check via the account token feeds (all address types)
+
+For **each address** collected so far (tx `from`, tx `to`, and every log participant), confirm the movements and catch anything outside the receipt window:
+
 ```
-GET https://api.etherscan.io/v2/api?chainid={CHAINID}&module=account&action=tokentx&address={FROM_OR_TO_ADDRESS}&startblock={BLOCK-2}&endblock={BLOCK+2}&sort=asc&apikey={APIKEY}
+GET https://api.etherscan.io/v2/api?chainid={CHAINID}&module=account&action=tokentx&address={ADDRESS}&startblock={BLOCK-2}&endblock={BLOCK+2}&sort=asc&apikey={APIKEY}        # ERC-20
+GET https://api.etherscan.io/v2/api?chainid={CHAINID}&module=account&action=tokennfttx&address={ADDRESS}&startblock={BLOCK-2}&endblock={BLOCK+2}&sort=asc&apikey={APIKEY}     # ERC-721
+GET https://api.etherscan.io/v2/api?chainid={CHAINID}&module=account&action=token1155tx&address={ADDRESS}&startblock={BLOCK-2}&endblock={BLOCK+2}&sort=asc&apikey={APIKEY}    # ERC-1155
 ```
+
+Prefer the address(es) actually involved in the seed tx; stay within the call budget (Hard rule 8) — the receipt-log parse above is the primary source, these calls resolve token symbols/decimals and verify.
 
 Collect every unique address seen across all responses into the **entity set**.
 
@@ -396,14 +429,21 @@ CEX deposit heuristics: first tx from an exchange hot wallet, >1000 lifetime txs
 
 Starting from the address that received the drained funds, trace outgoing transfers for up to N hops (default 2).
 
-### Normal txs per hop
+**Paginate — do not judge a hop from its first page.** A busy attacker, laundering hub, or sweeper wallet can bury the real CEX/mixer/bridge hop hundreds of records deep; reading only `page=1` would miss it and end the trace at the wrong place. For each hop, increment `page` (with `offset=100`) until one of these stops you:
+
+- a page returns fewer than `offset` results (last page reached), **or**
+- you hit a landmark hop worth stopping on (CEX deposit / mixer / bridge — see stop conditions below), **or**
+- the address is high-volume (10,000+ txs — label high-volume, stop, don't enumerate), **or**
+- the per-address page budget (20 pages, Hard rule 8) or the 100-call run budget is hit — then add `budget_exhausted` to `_meta.gaps`.
+
+### Normal txs per hop (paginate `page` = 1, 2, 3, …)
 ```
-GET https://api.etherscan.io/v2/api?chainid={CHAINID}&module=account&action=txlist&address={HOP_ADDRESS}&startblock={SEED_BLOCK}&endblock={SEED_BLOCK+50000}&page=1&offset=20&sort=asc&apikey={APIKEY}
+GET https://api.etherscan.io/v2/api?chainid={CHAINID}&module=account&action=txlist&address={HOP_ADDRESS}&startblock={SEED_BLOCK}&endblock={SEED_BLOCK+50000}&page={N}&offset=100&sort=asc&apikey={APIKEY}
 ```
 
-### Token transfers per hop
+### Token transfers per hop (paginate `page` = 1, 2, 3, …)
 ```
-GET https://api.etherscan.io/v2/api?chainid={CHAINID}&module=account&action=tokentx&address={HOP_ADDRESS}&startblock={SEED_BLOCK}&endblock={SEED_BLOCK+50000}&page=1&offset=20&sort=asc&apikey={APIKEY}
+GET https://api.etherscan.io/v2/api?chainid={CHAINID}&module=account&action=tokentx&address={HOP_ADDRESS}&startblock={SEED_BLOCK}&endblock={SEED_BLOCK+50000}&page={N}&offset=100&sort=asc&apikey={APIKEY}
 ```
 
 Track each flow as: `source → destination, amount, token/ETH, txhash, block, timestamp`.
@@ -622,7 +662,12 @@ Print the full path to the JSON file at the end of your reply.
 
 ---
 
-## Known landmark addresses (always apply)
+## Known landmark addresses — Ethereum mainnet (chainid 1) only
+
+**These labels apply ONLY when `chainid == 1`.** A 20-byte address is chain-specific: the same address on BSC, Polygon, Arbitrum, Base, etc. is almost always a *different* entity (or unused), so applying an Ethereum label there would falsely brand an unrelated address as Binance/Coinbase/Tornado and prematurely stop a trace.
+
+- **chainid == 1:** match against the table below. A hit is authoritative — assign the landmark role and stop the branch if it's a CEX/mixer/bridge.
+- **chainid != 1:** do **not** use this table at all. Identify CEX/mixer/bridge/router entities on other chains only from a `nametag` hit (Step 2) or `getsourcecode` contract name. If neither resolves, leave the address `unknown_*` and add a `chain_landmark_unknown` note to `_meta.gaps` — never carry an Ethereum label across chains.
 
 ```
 0xd90e2f925DA726b50C4Ed8D0Fb90Ad053324F31b  → Tornado Cash Router
