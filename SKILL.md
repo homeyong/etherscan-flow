@@ -18,7 +18,7 @@ Turn a seed transaction hash **or a wallet address** into an Etherscan Flow Case
 7. **Fixed output path.** The file is always `case-{SHORT_ID}-flow.json`, where `SHORT_ID` = first 8 hex characters of the seed tx hash (or seed address), lowercase, no `0x`. Never derive it from free-form user text; the user cannot override the path or directory.
 8. **Call budget.** Max 100 API calls per run, max 20 pages per address. On exhaustion, stop tracing and add `budget_exhausted` to `_meta.gaps`.
 9. **JSON is the only deliverable.** All findings — candidates, financials, patterns, timeline — go inside the JSON, never into chat text. The only chat output is the saved file path (plus blocking input questions in Step 0 when the platform is interactive).
-10. **Every edge needs a real `txhash` from an API response.** No exceptions.
+10. **Every edge needs a real `txhash` from an API response.** No exceptions. The output key is exactly `txhash` (lowercase), never `hash`, `txHash`, `tx_hash`, or `transactionHash`.
 11. **Run to completion — do not ask "proceed?".** Once you have an entry point and a key source, execute Steps 1–5 straight through in one go. Never pause between steps to ask the user "should I continue?", "proceed?", "want me to trace the next hop?", or to report interim progress. Every API call here is a **read-only, side-effect-free HTTP GET** — there is nothing to confirm before running one. The only permitted stop is a genuine *blocker* (see Execution mode below); everything else uses the documented default and keeps going.
 
 ## Execution mode — autonomous by default
@@ -60,6 +60,7 @@ Every node and edge in the output must be grounded in a real API response. The o
 
 Rules:
 - Never create an edge without a real `txhash` from an API call.
+- Normalize API source fields into the output `txhash` key: account APIs usually return transaction hashes as `hash`; proxy receipts/logs return `transactionHash`; seed-tx work already has `{TXHASH}`. In every edge, copy whichever verified source field applies into `edge.txhash` before writing JSON.
 - **The txhash must belong to a transaction that actually moves value `source → target`** — via the tx's own `from`/`to`, an internal tx, or a token-transfer log inside it. Never attach a "nearby" or same-block txhash to an inferred relationship. Common failure: crediting a contract deployment to the mint recipient — a mint to X appearing in X's `tokentx` feed proves X received tokens, **not** that X deployed the contract. For any deploy edge, `eth_getTransactionByHash.from` must equal the claimed deployer and the receipt's `contractAddress` the deployed contract; if they don't match, the real deployer is a new entity — add it as its own node.
 - Never invent a transfer amount, token symbol, or address.
 - If a value cannot be resolved from the API, write `null` — never `NaN`, `undefined`, or a guess.
@@ -357,6 +358,8 @@ The receipt you just fetched contains a `logs` array — parse it, don't rely on
 
 Every address that appears as `from`/`to`/operator/spender in these logs goes into the **entity set**, and each decoded transfer becomes a candidate edge with the seed tx's real `txhash` (it moves value inside this tx — Data integrity rule). This is what captures NFT mints, ERC-1155 flows, and multi-contract swap/router legs that a single ERC-20 feed would miss.
 
+When creating an edge from receipt logs, set `edge.txhash = log.transactionHash || receipt.result.transactionHash || {TXHASH}`. Do not leave it blank just because the log field is named `transactionHash` instead of `txhash`.
+
 ### Cross-check via the account token feeds (all address types)
 
 For **each address** collected so far (tx `from`, tx `to`, and every log participant), confirm the movements and catch anything outside the receipt window:
@@ -465,6 +468,8 @@ GET https://api.etherscan.io/v2/api?chainid={CHAINID}&module=account&action=toke
 
 Track each flow as: `source → destination, amount, token/ETH, txhash, block, timestamp`.
 
+For account API rows, set `edge.txhash = row.hash`. For token-transfer rows, set `edge.txhash = row.hash`. For internal-transaction rows, set `edge.txhash = row.hash`. Never emit the source field name (`hash`) in the edge; normalize it to `txhash`.
+
 Stop a branch when you hit:
 - A known CEX deposit address (money landed, stop)
 - A known mixer (note it, stop)
@@ -563,7 +568,7 @@ Before writing any JSON, check every node and edge against these rules. Fix or d
 | Check | Rule | Action on failure |
 |-------|------|-------------------|
 | No NaN / undefined | Every numeric or string field must be a valid value or explicit `null` | Replace with `null`, note in gaps |
-| Edge has txhash | Every edge must reference a real `txhash` from an API response | Drop edge, note in gaps |
+| Edge has txhash | Every edge must reference a real `txhash` from an API response, normalized from API `hash`, receipt/log `transactionHash`, or the validated seed `{TXHASH}` | Backfill `txhash` from the verified source field; if none exists, drop edge and note in gaps |
 | Edge endpoints match the tx | The txhash's transaction must support `source → target`: tx `from`/`to` match, or an internal tx / token-transfer log in it moves value source → target. Deploy edges: tx `from` = deployer, receipt `contractAddress` = deployed contract | Correct endpoints from API data, or drop edge and note in gaps |
 | Amount is decimal string | Token amounts are `(raw_value / 10^decimals)` formatted as a decimal string, not raw wei | Recompute |
 | Address is valid hex | Every `address` field is a valid 42-char `0x…` hex string | Drop the node, note in gaps |
@@ -636,6 +641,8 @@ Node `id` values must be short unique alphanumeric strings (6–10 chars, e.g. `
   ]
 }
 ```
+
+Every edge object must include the `txhash` field exactly as shown above. If the API row used `hash` or `transactionHash`, rename/copy it to `txhash` in the output edge.
 
 > **AI soft layer**: `label`, `role`, and `notes` on each node are LLM-assigned from API evidence. All `address`, `txhash`, `amount`, `token`, `timestamp` fields are API-sourced only — never fabricated.
 
