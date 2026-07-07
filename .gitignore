@@ -1,0 +1,14 @@
+# Secrets — never commit an API key
+.env
+.etherscan
+*.key
+
+# Generated case files
+case-*.json
+cases/
+
+# OS / editor cruft
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
