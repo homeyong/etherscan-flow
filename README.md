@@ -199,6 +199,58 @@ There are no per-call prompts here; instead, on paid plans you must **allowlist 
 
 Roles, labels, and notes are AI inference over public Etherscan data — **not** Etherscan verdicts, accusations, or legal findings.
 
+## Optional: Connect the Etherscan MCP
+
+`etherscan-flow` can call Etherscan directly, but an MCP connection is cleaner
+because the API key can live in the MCP client config instead of the prompt. The
+hosted MCP endpoint is:
+
+```text
+https://mcp.kennydev.xyz/mcp
+```
+
+It is bring-your-own-key: each user sends their own Etherscan V2 API key in the
+`Authorization` header.
+
+Codex config (`~/.codex/config.toml`):
+
+```toml
+[mcp_servers.etherscan]
+url = "https://mcp.kennydev.xyz/mcp"
+
+[mcp_servers.etherscan.headers]
+Authorization = "Bearer YourApiKeyToken"
+```
+
+Claude Desktop / Claude Code MCP JSON:
+
+```json
+{
+  "mcpServers": {
+    "etherscan": {
+      "url": "https://mcp.kennydev.xyz/mcp",
+      "headers": {
+        "Authorization": "Bearer YourApiKeyToken"
+      }
+    }
+  }
+}
+```
+
+Quick checks:
+
+```bash
+curl -s https://mcp.kennydev.xyz/health
+curl -s -X POST https://mcp.kennydev.xyz/mcp \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" \
+  -H "Authorization: Bearer YourApiKeyToken" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}'
+```
+
+Replace `YourApiKeyToken` with your own Etherscan key. Do not paste a shared
+production key into public docs, screenshots, or support messages.
+
 ## Tool coverage
 
 | Tool | v1 |
