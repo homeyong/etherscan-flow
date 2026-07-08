@@ -222,16 +222,37 @@ url = "https://mcp.kennydev.xyz/mcp"
 Authorization = "Bearer YourApiKeyToken"
 ```
 
-Claude Desktop / Claude Code MCP JSON:
+Codex CLI:
+
+```bash
+export ETHERSCAN_API_KEY=YourApiKeyToken
+codex mcp add etherscan --url https://mcp.kennydev.xyz/mcp \
+  --bearer-token-env-var ETHERSCAN_API_KEY
+```
+
+On Windows PowerShell:
+
+```powershell
+$env:ETHERSCAN_API_KEY="YourApiKeyToken"
+codex mcp add etherscan --url https://mcp.kennydev.xyz/mcp `
+  --bearer-token-env-var ETHERSCAN_API_KEY
+```
+
+Claude Code CLI:
+
+```bash
+claude mcp add --transport http etherscan https://mcp.kennydev.xyz/mcp \
+  --header "Authorization: Bearer YourApiKeyToken"
+```
+
+Claude Desktop / Claude Code MCP JSON using `mcp-remote`:
 
 ```json
 {
   "mcpServers": {
     "etherscan": {
-      "url": "https://mcp.kennydev.xyz/mcp",
-      "headers": {
-        "Authorization": "Bearer YourApiKeyToken"
-      }
+      "command": "npx",
+      "args": ["mcp-remote", "https://mcp.kennydev.xyz"]
     }
   }
 }
