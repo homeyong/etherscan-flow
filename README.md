@@ -134,6 +134,31 @@ show where this DAO gets income and how it spends money, with totals, apikey=YOU
 
 You get a JSON file. Open [Etherscan Flow](https://etherscan.io), choose **Import**, and paste it — the schema maps one-to-one, no reformatting.
 
+## Optional: Use Etherscan CLI Instead of MCP
+
+If MCP setup is inconvenient, install the official
+[Etherscan CLI](https://github.com/etherscan/etherscan-cli) and log in once:
+
+```bash
+etherscan login
+```
+
+After that, `etherscan-flow` can use the CLI as a local read-only transport. The
+API key stays in the CLI's env/config/keyring, and the skill calls commands such
+as:
+
+```bash
+etherscan account txlist 0x... --chain ethereum --all --max-pages 20 --json
+etherscan account tokentx 0x... --chain ethereum --all --max-pages 20 --json
+etherscan proxy eth_getTransactionByHash 0x... --chain ethereum --json
+```
+
+Transport preference is:
+
+```text
+inline apikey= -> Etherscan MCP -> Etherscan CLI -> ETHERSCAN_API_KEY -> local key file -> demo key
+```
+
 ## Stop it asking permission for every call
 
 A single trace makes **many** API calls (up to 100). If your agent asks you to approve each one, that's the agent's **permission system**, not the skill — every call is a read-only `GET` to one host (`api.etherscan.io`), so it's safe to allowlist once and let the whole trace run uninterrupted.

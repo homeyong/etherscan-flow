@@ -156,7 +156,9 @@ GET https://api.etherscan.io/v2/api?chainid={CHAINID}&module=...&action=...&...&
 | Avalanche C-Chain | `43114` |
 | Fantom | `250` |
 
-> **MCP transport:** if you resolved to the Etherscan MCP server (credentials step 2), ignore the raw HTTP URLs in Steps 1–4. For each `module={M}&action={A}` call below, invoke the Etherscan MCP tool that performs the same operation (matching module/action — e.g. `account`/`txlist`, `account`/`tokentx`, `account`/`txlistinternal`, `proxy`/`eth_getTransactionByHash`, `proxy`/`eth_getTransactionReceipt`, `nametag`/`getaddresstag`, `contract`/`getsourcecode`), passing the same `chainid`, `address`/`txhash`, and pagination parameters. Do not pass a key — the MCP server supplies it. Every data-integrity, budget (Hard rule 8), and validation rule applies identically on both transports.
+> **MCP transport:** if you resolved to the Etherscan MCP server (credentials step 2), ignore the raw HTTP URLs in Steps 1–4. For each `module={M}&action={A}` call below, invoke the Etherscan MCP tool that performs the same operation (matching module/action — e.g. `account`/`txlist`, `account`/`tokentx`, `account`/`txlistinternal`, `proxy`/`eth_getTransactionByHash`, `proxy`/`eth_getTransactionReceipt`, `nametag`/`getaddresstag`, `contract`/`getsourcecode`), passing the same `chainid`, `address`/`txhash`, and pagination parameters. Do not pass a key — the MCP server supplies it. Every data-integrity, budget (Hard rule 8), and validation rule applies identically on all transports.
+
+> **CLI transport:** if you resolved to the official `etherscan` CLI (credentials step 3), ignore the raw HTTP URLs in Steps 1–4 and call the equivalent read-only CLI command with `--json`, `--chain {CHAIN_NAME_OR_ID}`, and pagination flags where applicable. The CLI owns API-key storage through `etherscan login`, `ETHERSCAN_API_KEY`, or its config/keyring; never pass `--api-key` unless the user explicitly gave `apikey=` for this run. Every data-integrity, budget (Hard rule 8), and validation rule applies identically on all transports.
 
 ---
 
@@ -164,7 +166,7 @@ GET https://api.etherscan.io/v2/api?chainid={CHAINID}&module=...&action=...&...&
 
 ### Credentials & transport — resolve in this exact order
 
-This skill supports two transports: **MCP** (call Etherscan MCP tools; the key lives in the MCP server's client-configured env and never enters your context) and **HTTP** (you build `https://api.etherscan.io/v2/api?…&apikey=…` requests yourself). At the start of every run, resolve which to use by walking this list top-to-bottom and stopping at the first that applies:
+This skill supports three transports: **MCP** (call Etherscan MCP tools; the key lives in the MCP server's client-configured env and never enters your context), **CLI** (call the official `etherscan` CLI; the key lives in the CLI's env/config/keyring), and **HTTP** (you build `https://api.etherscan.io/v2/api?…&apikey=…` requests yourself). At the start of every run, resolve which to use by walking this list top-to-bottom and stopping at the first that applies:
 
 1. **Explicit key in the prompt — per-run override, always wins.** An `apikey=KEY` token may appear anywhere in the user's message or skill arguments:
    ```
@@ -175,7 +177,27 @@ This skill supports two transports: **MCP** (call Etherscan MCP tools; the key l
 
 2. **Etherscan MCP server — preferred when no explicit key.** If Etherscan MCP tools (e.g. `mcp__etherscan__*`) are available in this session, use the **MCP** transport: call those tools for every data fetch and do not build HTTP URLs or handle a key at all. This is the most secure path (the key never touches your context) — prefer it whenever it is present.
 
-3. **`ETHERSCAN_API_KEY` environment variable — HTTP transport.** Check presence *without revealing the value*, using the syntax for the actual shell (detect from platform / `$SHELL` / `$PSVersionTable` — do not assume bash on Windows):
+3. **Official Etherscan CLI — preferred when no explicit key and no MCP.** If an `etherscan` executable is available, use the **CLI** transport. First run a harmless capability check such as `etherscan whoami` or `etherscan version`; do not print any saved key beyond the CLI's own redacted output. If the CLI is installed but not logged in and no env key is set, ask the user to run `etherscan login` or provide another key source.
+
+   Map API calls to CLI commands:
+
+   | API call | CLI command shape |
+   |----------|-------------------|
+   | `account` / `balance` | `etherscan account balance {ADDRESS} --chain {CHAIN} --json` |
+   | `account` / `txlist` | `etherscan account txlist {ADDRESS} --chain {CHAIN} --all --max-pages 20 --json` |
+   | `account` / `tokentx` | `etherscan account tokentx {ADDRESS} --chain {CHAIN} --all --max-pages 20 --json` |
+   | `account` / `txlistinternal` by address | `etherscan account txlistinternal --address {ADDRESS} --chain {CHAIN} --all --max-pages 20 --json` |
+   | `account` / `txlistinternal` by txhash | `etherscan account txlistinternal --txhash {TXHASH} --chain {CHAIN} --json` |
+   | `proxy` / `eth_getTransactionByHash` | `etherscan proxy eth_getTransactionByHash {TXHASH} --chain {CHAIN} --json` |
+   | `proxy` / `eth_getTransactionReceipt` | `etherscan proxy eth_getTransactionReceipt {TXHASH} --chain {CHAIN} --json` |
+   | `proxy` / `eth_getCode` | `etherscan proxy eth_getCode {ADDRESS} --chain {CHAIN} --json` |
+   | `proxy` / `eth_call` | `etherscan proxy eth_call --to {ADDRESS} --data {CALLDATA} --tag latest --chain {CHAIN} --json` |
+   | `contract` / `getsourcecode` | `etherscan contract getsourcecode {ADDRESS} --chain {CHAIN} --json` |
+   | `nametag` / `getaddresstag` | `etherscan nametag getaddresstag {ADDRESS} --chain {CHAIN} --json` |
+
+   Use CLI pagination flags to respect Hard rule 8: `--all --max-pages 20` for paginated address-list calls. If the CLI command fails because it is not installed, not logged in, or lacks a required endpoint, fall through to the next key source. If it fails because the API returns an error, record that API error in `_meta.gaps` and continue where possible.
+
+4. **`ETHERSCAN_API_KEY` environment variable — HTTP transport.** Check presence *without revealing the value*, using the syntax for the actual shell (detect from platform / `$SHELL` / `$PSVersionTable` — do not assume bash on Windows):
 
    **POSIX shells (bash/zsh — macOS, Linux):**
    ```bash
@@ -193,13 +215,14 @@ This skill supports two transports: **MCP** (call Etherscan MCP tools; the key l
 
    In every case the variable is expanded **by the shell at call time** so the literal key never enters your context or the transcript. Never `echo`, `printenv`, `Write-Host $env:ETHERSCAN_API_KEY`, or otherwise print its value. Picking the wrong shell's syntax (e.g. `test -n` in PowerShell) silently reports UNSET and wrongly falls through to the demo key — match the shell.
 
-4. **Local key file — HTTP transport.** If `~/.etherscan/key` (or a path the user names) exists, read it via a shell command at call time and use it the same way. Never paste its contents into your reply.
+5. **Local key file — HTTP transport.** If `~/.etherscan/key` (or a path the user names) exists, read it via a shell command at call time and use it the same way. Never paste its contents into your reply.
 
-5. **Interactive ask / demo key — last resort.** If none of the above resolve and the platform is interactive, ask once: "Do you have an Etherscan API key? Paste `apikey=YOUR_KEY`, set `ETHERSCAN_API_KEY`, or configure the Etherscan MCP server — otherwise I'll use the rate-limited free tier." If they decline or the platform is non-interactive, try the demo key `YourApiKeyToken` once; if the API rejects it, stop and tell the user a key or the MCP server is required.
+6. **Interactive ask / demo key — last resort.** If none of the above resolve and the platform is interactive, ask once: "Do you have an Etherscan API key? Paste `apikey=YOUR_KEY`, run `etherscan login`, set `ETHERSCAN_API_KEY`, or configure the Etherscan MCP server — otherwise I'll use the rate-limited free tier." If they decline or the platform is non-interactive, try the demo key `YourApiKeyToken` once; if the API rejects it, stop and tell the user a key, CLI login, or MCP server is required.
 
 **Security rules for all transports:**
 - Never echo, log, or store the key anywhere in the output, `_meta`, filename, or chat (Hard rule 6).
 - For the env/file transports, reference the key by variable name in the shell command — never inline the literal value into a URL you write out.
+- For the CLI transport, prefer the CLI's existing login/keyring/config resolution. Do not extract or print the saved key.
 - Prefer MCP whenever available: it is the only path where the key never touches your context.
 
 ### Entry point
