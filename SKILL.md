@@ -78,7 +78,7 @@ Use business/entity profile mode when the user asks about a project, DAO, protoc
 Business/entity profile mode has a discovery phase before tracing:
 
 1. Parse all `0x...` addresses in the prompt and treat them as candidate scope addresses.
-2. Parse ENS names in the prompt. Resolve them to `0x...` addresses only through an approved Etherscan API/MCP response if available; if the API cannot resolve an ENS name, add a gap and do not use that ENS name as an address.
+2. Parse ENS names in the prompt. Resolve them to `0x...` addresses only through Step 0E (ENS resolution through Etherscan `eth_call`) or another approved Etherscan API/MCP response; if the API cannot resolve an ENS name, add a gap and do not use that ENS name as an address.
 3. If the prompt names an entity that appears in the maintained known-entity scope table, use that table's candidate addresses as scope hypotheses, then validate each one through Etherscan API calls in this run.
 4. If no candidate address remains, ask once for the treasury, controller, timelock, multisig, revenue, or other entity wallet/contract address. Do not write a JSON file.
 
@@ -227,6 +227,87 @@ Also collect:
 
 ---
 
+## Step 0E — ENS name resolution through Etherscan `eth_call`
+
+Use this whenever the prompt contains an ENS name such as `vitalik.eth` or `kennyyong.eth`, and no resolved `0x...` address was provided for it. Do **not** stop just because the Etherscan MCP server has no dedicated ENS-resolution tool. Resolve the ENS name through Etherscan V2 `proxy` / `eth_call`.
+
+ENS resolution is an Ethereum mainnet registry lookup. Use `chainid=1` for the ENS registry/resolver calls even when the later money-flow trace is on another EVM chain. After the ENS name resolves to an address, validate that address on the selected tracing chain before using it as a node or seed.
+
+### 0E-1. Validate and normalize the ENS name
+
+- Accept only a plain ENS name from the prompt, not a URL or free-form sentence.
+- Lowercase the name.
+- Reject names containing whitespace, slashes, control characters, quotes, or shell metacharacters.
+- If the name cannot be safely normalized, add `ens_name_invalid` to `_meta.gaps` and ask for the `0x...` address.
+
+### 0E-2. Compute the ENS namehash locally
+
+Compute the ENS namehash from the normalized name using the ENS/EIP-137 algorithm:
+
+1. Start with 32 zero bytes.
+2. Split the name into labels from right to left.
+3. For each label, set `node = keccak256(node || keccak256(label_utf8_bytes))`.
+4. Format the final 32-byte node as 64 lowercase hex characters without `0x`.
+
+Use any local, deterministic tool/library already available in the runtime, for example `cast namehash`, ethers.js `namehash`, viem, web3, or a local keccak implementation. Never call a non-Etherscan host just to compute namehash. If no local namehash method is available, do not hang or loop; ask once for the resolved `0x...` address and add `ens_namehash_unavailable` to `_meta.gaps`.
+
+### 0E-3. Look up the resolver in the ENS registry
+
+Call the ENS registry `resolver(bytes32)` function:
+
+- ENS registry: `0x00000000000C2E074eC69A0dFb2997BA6C7d2e1e`
+- Selector: `0x0178b8bf`
+- Calldata: `0x0178b8bf{NAMEHASH_64_HEX}`
+
+```
+GET https://api.etherscan.io/v2/api?chainid=1&module=proxy&action=eth_call&to=0x00000000000C2E074eC69A0dFb2997BA6C7d2e1e&data=0x0178b8bf{NAMEHASH_64_HEX}&tag=latest&apikey={APIKEY}
+```
+
+Parse the returned 32-byte word as an address: take the rightmost 40 hex characters and prefix `0x`. If the result is empty, all zeroes, malformed, or not a valid 42-character address, add `ens_resolver_not_found` to `_meta.gaps` and ask for the `0x...` address.
+
+### 0E-4. Call `addr(bytes32)` on the resolver
+
+Call the resolver `addr(bytes32)` function:
+
+- Selector: `0x3b3b57de`
+- Calldata: `0x3b3b57de{NAMEHASH_64_HEX}`
+
+```
+GET https://api.etherscan.io/v2/api?chainid=1&module=proxy&action=eth_call&to={RESOLVER_ADDRESS}&data=0x3b3b57de{NAMEHASH_64_HEX}&tag=latest&apikey={APIKEY}
+```
+
+Parse the returned 32-byte word as an address: take the rightmost 40 hex characters and prefix `0x`. If the result is empty, all zeroes, malformed, or not a valid 42-character address, add `ens_addr_not_found` to `_meta.gaps` and ask for the `0x...` address.
+
+### 0E-5. Use the resolved address safely
+
+- Store the resolved `0x...` value in the node `address` field.
+- Store the ENS name in `subLabel`.
+- Store `chainid` on the node as the selected tracing chain after validation on that chain, not necessarily `1`.
+- Add an `_meta.candidates` entry noting the ENS name, namehash, resolver address, resolved address, and the `eth_call` evidence.
+- Never invent an address if any ENS step fails.
+
+If a shell approval prompt appears because the runtime command contains expandable strings or embedded expressions, that is the harness approving command execution, not an ENS blocker. Prefer direct MCP/proxy calls when available; otherwise run the read-only Etherscan `eth_call` once and continue.
+
+### 0E-6. Optional reverse ENS lookup for address labels
+
+Use this only to enrich a known `0x...` address with an ENS `subLabel`, or when the user explicitly asks for reverse ENS. Never use reverse ENS as proof of address ownership unless it forward-resolves back to the same address.
+
+1. Build the reverse ENS name: `{lowercase_address_without_0x}.addr.reverse`.
+2. Compute its namehash using 0E-2.
+3. Look up its resolver using 0E-3.
+4. Call `name(bytes32)` on the resolver:
+
+- Selector: `0x691f3431`
+- Calldata: `0x691f3431{REVERSE_NAMEHASH_64_HEX}`
+
+```
+GET https://api.etherscan.io/v2/api?chainid=1&module=proxy&action=eth_call&to={REVERSE_RESOLVER_ADDRESS}&data=0x691f3431{REVERSE_NAMEHASH_64_HEX}&tag=latest&apikey={APIKEY}
+```
+
+Parse the ABI-encoded dynamic string: offset word, length word, then UTF-8 bytes padded to 32-byte alignment. Validate the returned ENS name with 0E-1, then forward-resolve it with 0E-1 through 0E-4. Use it as `subLabel` only if the forward-resolved address equals the original address case-insensitively. If reverse lookup fails or forward verification fails, add `ens_reverse_unverified` to `_meta.gaps` and keep `subLabel: null`.
+
+---
+
 ## Step 0D — Business/entity profile mode
 
 Use this when the user wants to understand a DAO/protocol/project as a business: where money comes from, how much came in, where money goes, and how much was spent.
@@ -236,7 +317,7 @@ Use this when the user wants to understand a DAO/protocol/project as a business:
 Build a candidate address list in this order:
 
 1. **Prompt addresses.** Extract every valid `0x...` address from the user prompt.
-2. **Prompt ENS names.** If the prompt contains ENS names, resolve them only through an approved Etherscan API/MCP response if available. Never put the ENS name in an `address` field.
+2. **Prompt ENS names.** If the prompt contains ENS names, resolve them through Step 0E. Never put the ENS name in an `address` field.
 3. **Known entity scope table.** If the entity name exactly matches an entry in the maintained table below, add those candidate addresses.
 4. **No candidates.** If the list is empty, stop and ask once: "Which treasury, timelock, controller, registrar, multisig, or revenue addresses should I include for this entity?"
 
