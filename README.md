@@ -8,12 +8,13 @@ Use it for a plain transfer, a token launch, a DeFi swap route, an NFT mint — 
 
 Output is **JSON only** — every node and edge is grounded in a real API response, never invented.
 
-The skill has two modes:
+The skill has two modes, plus a document-import path:
 
 - **Strict trace mode:** start from a tx hash or address and follow the money.
 - **Business/entity profile mode:** start from a DAO/protocol/project/business scope, resolve it to verified addresses, then summarize income, spending, categories, and totals inside the JSON.
+- **Document import (into hypothesis validation):** paste a draft case, notes, or a gist/pastebin URL you typed yourself. The skill extracts the addresses and flow claims from it and validates every one against the live API — nothing from the document is copied into the output unverified. The URL fetch is read-only and never carries your API key.
 
-Named entities such as `ENS DAO` are treated as scope hypotheses, not evidence. The skill must resolve them to real `0x...` addresses from user-provided addresses, API-resolved ENS names, or a maintained known-entity scope table before it can write a case.
+Named entities such as `ENS DAO` are treated as scope hypotheses, not evidence. The skill resolves them to real `0x...` addresses from user-provided addresses, API-resolved ENS names, or its known-entity scope table — which ships with the well-known ENS DAO candidates (treasury timelock, registrar controllers, token, governor) so `show ENS DAO as a business` works out of the box. Every table candidate is still validated live before it appears in a case.
 
 ## How it works
 
@@ -86,7 +87,7 @@ Etherscan API V2 requires a key — there is no anonymous or demo tier. A key is
 
 **inline `apikey=` → Etherscan MCP → Etherscan CLI → `ETHERSCAN_API_KEY` env var → local key file**
 
-If none resolve, the skill stops and asks for a key. It never writes a case file without live API data.
+First match wins and the order is binding: an inline `apikey=` anywhere in your prompt **always** takes precedence — the skill must use it and must not go probing the CLI or demanding `ETHERSCAN_API_KEY` when you've already pasted a key. If none resolve, the skill stops and asks for a key. It never writes a case file without live API data.
 
 **Where the key actually goes depends on where you run it:**
 
@@ -129,9 +130,17 @@ build a case for this hack 0x<address> apikey=YOUR_KEY
 Or profile a DAO/protocol/business from a verified scope:
 
 ```
+show ENS DAO as a business
 show ENS DAO as a business using these treasury, controller, and timelock addresses: 0x<address> 0x<address>
 map income and spending for this protocol treasury 0x<address>
 show where this DAO gets income and how it spends money, with totals, apikey=YOUR_KEY 0x<address>
+```
+
+Or import a draft/notes and have every claim verified on-chain:
+
+```
+extract the flows from this gist and build the case: https://gist.github.com/<user>/<id> apikey=YOUR_KEY
+here's my draft case JSON — validate it and produce a verified version: <pasted draft>
 ```
 
 You get a JSON file. Open [Etherscan Flow](https://etherscan.io), choose **Import**, and paste it — the schema maps one-to-one, no reformatting.
