@@ -82,9 +82,11 @@ Prefer to scope it to one project? Clone into `.codex/skills/etherscan-flow` in 
 
 ## Your Etherscan API key — and how private it really is
 
-An Etherscan key is read-only and rate-limited, so leaking one is low-stakes — but keep it out of the chat transcript where you reasonably can. The skill picks a key source in this order, first match wins:
+Etherscan API V2 requires a key — there is no anonymous or demo tier. A key is read-only and rate-limited, so leaking one is low-stakes, but keep it out of the chat transcript where you reasonably can. The skill picks a key source in this order, first match wins:
 
-**inline `apikey=` → Etherscan MCP → `ETHERSCAN_API_KEY` env var → local key file → demo key**
+**inline `apikey=` → Etherscan MCP → Etherscan CLI → `ETHERSCAN_API_KEY` env var → local key file**
+
+If none resolve, the skill stops and asks for a key. It never writes a case file without live API data.
 
 **Where the key actually goes depends on where you run it:**
 
@@ -156,7 +158,7 @@ etherscan proxy eth_getTransactionByHash 0x... --chain ethereum --json
 Transport preference is:
 
 ```text
-inline apikey= -> Etherscan MCP -> Etherscan CLI -> ETHERSCAN_API_KEY -> local key file -> demo key
+inline apikey= -> Etherscan MCP -> Etherscan CLI -> ETHERSCAN_API_KEY -> local key file
 ```
 
 ## Stop it asking permission for every call
@@ -244,13 +246,13 @@ Codex config (`~/.codex/config.toml`):
 url = "https://mcp.kennydev.xyz/mcp"
 
 [mcp_servers.etherscan.headers]
-Authorization = "Bearer YourApiKeyToken"
+Authorization = "Bearer YOUR_ETHERSCAN_API_KEY"
 ```
 
 Codex CLI:
 
 ```bash
-export ETHERSCAN_API_KEY=YourApiKeyToken
+export ETHERSCAN_API_KEY=YOUR_ETHERSCAN_API_KEY
 codex mcp add etherscan --url https://mcp.kennydev.xyz/mcp \
   --bearer-token-env-var ETHERSCAN_API_KEY
 ```
@@ -258,7 +260,7 @@ codex mcp add etherscan --url https://mcp.kennydev.xyz/mcp \
 On Windows PowerShell:
 
 ```powershell
-$env:ETHERSCAN_API_KEY="YourApiKeyToken"
+$env:ETHERSCAN_API_KEY="YOUR_ETHERSCAN_API_KEY"
 codex mcp add etherscan --url https://mcp.kennydev.xyz/mcp `
   --bearer-token-env-var ETHERSCAN_API_KEY
 ```
@@ -267,7 +269,7 @@ Claude Code CLI:
 
 ```bash
 claude mcp add --transport http etherscan https://mcp.kennydev.xyz/mcp \
-  --header "Authorization: Bearer YourApiKeyToken"
+  --header "Authorization: Bearer YOUR_ETHERSCAN_API_KEY"
 ```
 
 Claude Desktop / Claude Code MCP JSON using `mcp-remote`:
@@ -277,7 +279,7 @@ Claude Desktop / Claude Code MCP JSON using `mcp-remote`:
   "mcpServers": {
     "etherscan": {
       "command": "npx",
-      "args": ["mcp-remote", "https://mcp.kennydev.xyz"]
+      "args": ["mcp-remote", "https://mcp.kennydev.xyz/mcp"]
     }
   }
 }
@@ -290,11 +292,11 @@ curl -s https://mcp.kennydev.xyz/health
 curl -s -X POST https://mcp.kennydev.xyz/mcp \
   -H "Content-Type: application/json" \
   -H "Accept: application/json, text/event-stream" \
-  -H "Authorization: Bearer YourApiKeyToken" \
+  -H "Authorization: Bearer YOUR_ETHERSCAN_API_KEY" \
   -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}'
 ```
 
-Replace `YourApiKeyToken` with your own Etherscan key. Do not paste a shared
+Replace `YOUR_ETHERSCAN_API_KEY` with your own Etherscan key. Do not paste a shared
 production key into public docs, screenshots, or support messages.
 
 ## Tool coverage
