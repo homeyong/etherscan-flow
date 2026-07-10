@@ -53,9 +53,9 @@ This skill runs unattended from entry point to saved JSON. When any step says "i
 | ENS name unresolvable | Step 0E failed *and* the name is the only entry point | If any `0x` seed remains, drop the ENS name, add the `ens_*` gap, and continue |
 | Ambiguous entry role | *Never a reason to stop* | Run both the 0A and 0B scans and assign roles from evidence |
 | Which candidate tx | *Never a reason to stop* | Take the highest-scoring candidate; record the rest in `_meta.candidates` |
-| Depth / chain / date | *Never a reason to stop* | Use defaults: depth 2, chainid 1, full block range |
+| Depth / chain / date | *Never a reason to stop* | Use defaults: depth 2, chainid 1; strict trace uses the 7-day window in Step 3, while business mode uses Step 0D-3 |
 
-**These five rows are the only permitted stops.** Every "ask once" elsewhere in this document (Steps 0D-1, 0E-1 through 0E-4, and the Step 0 credentials list) is a *contributor* to that single message, not a licence for a second pause. When you must ask, **bundle every open question into that one message**, then act on the reply — or on the defaults if the platform is non-interactive. Do not serialize questions one per turn.
+**Only the first four rows are permitted stops.** Every "ask once" elsewhere in this document (Steps 0D-1, 0E-1 through 0E-4, and the Step 0 credentials list) is a *contributor* to that single message, not a licence for a second pause. When you must ask, **bundle every open question into that one message**, then act on the reply — or on the defaults if the platform is non-interactive. Do not serialize questions one per turn.
 
 > If your runtime prompts *you* for permission on each network/shell call, that is a harness setting, not this skill asking — these are all read-only GETs to a single host (`api.etherscan.io`); allow them for the run so the trace isn't interrupted call-by-call.
 
@@ -380,7 +380,9 @@ Optionally call nametag if available under Step 2 rules. Include a candidate in 
 
 ### 0D-3. Choose the business window
 
-If the user gives a date range, use it. Otherwise default to the most recent available activity within the call budget. State the effective block/time window in `_meta.business_profile.timeframe` and add `timeframe_limited` to `_meta.gaps` when full history was not fetched.
+If the user gives a date range, use its start and end timestamps as `{WINDOW_START_TIMESTAMP}` / `{WINDOW_END_TIMESTAMP}`. Otherwise inspect the validated scope addresses' recent transaction rows, take the latest confirmed activity timestamp as `{WINDOW_END_TIMESTAMP}`, and set `{WINDOW_START_TIMESTAMP}` to 7 days earlier. If no scope address has a transaction or transfer row, no edge can survive Step 4B: stop without writing a case.
+
+Step 3 converts these timestamps to block numbers once for the run. State the effective block/time window in both `_meta.trace_window` and `_meta.business_profile.timeframe`; add `timeframe_limited` to `_meta.gaps` whenever the selected window does not cover the entity's full history.
 
 ### 0D-4. Classify income and spending
 
@@ -592,7 +594,7 @@ Format unverified claims in gaps as:
 
 ### 0C-4. Continue
 
-Add all confirmed addresses to the entity set with their validated roles. Add confirmed tx hashes to the seed list. Proceed to **Step 1** for any seed tx hashes, or directly to **Step 3** (hop tracing) if no tx hashes were found but addresses are confirmed.
+Add all confirmed addresses to the entity set with their validated roles. Add confirmed tx hashes to the seed list. Proceed to **Step 1** for any seed tx hashes. If no tx hash was confirmed, choose the earliest validated flow row selected for this investigation as the anchor and store its timestamp as `{ANCHOR_TIMESTAMP}` before proceeding to **Step 3**. If the confirmed addresses have no real transaction or transfer rows, no edge can survive Step 4B: stop without writing a case.
 
 ---
 
@@ -745,14 +747,20 @@ Starting from the address that received the drained funds, trace outgoing transf
 
 **Never write `endblock = SEED_BLOCK + 50000`.** A block count means a different span on every chain. Measured against a 7-day window: 50,000 blocks is ~99% of it on Ethereum, but ~16% on Optimism and Base, ~12% on Polygon, ~3% on BNB Chain, and ~2% on Arbitrum. A fixed count silently truncates the trace to a few hours on fast chains, so laundering hops land outside the window and the branch dies at the wrong place.
 
-Pick a **time** window instead — default **7 days after the seed tx** — and convert both ends to block numbers on the tracing chain:
+Resolve `{WINDOW_START_TIMESTAMP}` / `{WINDOW_END_TIMESTAMP}` before converting them to blocks:
+
+- **Business/entity profile mode:** use the timestamps selected in Step 0D-3. A user-supplied date range always wins.
+- **Strict trace with a seed tx:** start at `{SEED_TIMESTAMP}` and end at the earlier of `{SEED_TIMESTAMP + 604800}` or the current UTC timestamp.
+- **Strict trace without a seed tx:** start at `{ANCHOR_TIMESTAMP}` from Step 0C-4 and end at the earlier of `{ANCHOR_TIMESTAMP + 604800}` or the current UTC timestamp.
+
+Convert both timestamps to block numbers on the tracing chain:
 
 ```
-GET https://api.etherscan.io/v2/api?chainid={CHAINID}&module=block&action=getblocknobytime&timestamp={SEED_TIMESTAMP}&closest=before&apikey={APIKEY}
-GET https://api.etherscan.io/v2/api?chainid={CHAINID}&module=block&action=getblocknobytime&timestamp={SEED_TIMESTAMP+604800}&closest=after&apikey={APIKEY}
+GET https://api.etherscan.io/v2/api?chainid={CHAINID}&module=block&action=getblocknobytime&timestamp={WINDOW_START_TIMESTAMP}&closest=before&apikey={APIKEY}
+GET https://api.etherscan.io/v2/api?chainid={CHAINID}&module=block&action=getblocknobytime&timestamp={WINDOW_END_TIMESTAMP}&closest=after&apikey={APIKEY}
 ```
 
-Call these once per run (two calls total), cache the result as `{WINDOW_STARTBLOCK}` / `{WINDOW_ENDBLOCK}`, and reuse them for every hop and for Step 3B. Record the effective window in `_meta.gaps` as `trace_window`. If either lookup fails, fall back to `endblock=99999999` and note `window_unresolved` — an over-wide window costs pages, a too-narrow one loses the money.
+Call each lookup at most once per run, cache the results as `{WINDOW_STARTBLOCK}` / `{WINDOW_ENDBLOCK}`, and reuse them for every hop and for Step 3B. If the start lookup fails, use `{SEED_BLOCK}` when a seed tx exists, otherwise `0`. If the end lookup fails, use `99999999`. Record the final timestamps, block bounds, day count, and source (`user_range`, `business_recent`, `seed_tx`, or `address_anchor`) in `_meta.trace_window`; add `window_unresolved` to `_meta.gaps` only when either fallback was needed. An over-wide fallback costs pages, but a too-narrow fallback loses the money.
 
 ### Normal txs per hop (paginate `page` = 1, 2, 3, …)
 ```
@@ -904,12 +912,14 @@ Before writing any JSON, check every node and edge against these rules. Fix or d
 | Amount is decimal string | Token amounts are `(raw_value / 10^decimals)` formatted as a decimal string, not raw wei | Recompute |
 | Address is valid hex | Every `address` field is a valid 42-char `0x…` hex string | Drop the node, note in gaps |
 | ENS/name stored separately | ENS names, exchange display names, project aliases, or second-line labels are in `label`/`subLabel`, never `address` | Move display text to `label` or `subLabel`; keep only the verified 0x address in `address` |
-| No duplicate edges | The same movement must not appear twice. Identity is `(chainid, txhash, source, target, token, type)` — **not** `(chainid, source, target, txhash)`, which would delete the second leg of any swap that moves two assets between the same pair in one tx | Deduplicate on the full tuple |
+| No duplicate movements | Deduplicate only when the exact same API movement was fetched through more than one query. A tx hash identifies a transaction, not every movement inside it: use `(chainid, txhash)` for a top-level normal tx, `(chainid, txhash, logIndex)` for event-log/token movements, and `(chainid, txhash, traceId)` for internal movements. If an endpoint provides no stable movement index, compare the complete normalized source row rather than dropping same-tx movements. | Remove exact source duplicates, then perform Step 5 edge merging |
 | Merged edges are consistent | If an edge merges several txs (`txcount` > 1), its `txhash` is the earliest tx in the group, `amount` is the summed decimal total, and every merged hash is listed under `_meta.edge_txhashes[edge.id]` | Recompute, or split the edge |
 | Token symbol resolved | If symbol is unknown after tokentx lookup, write `null` not an empty string or guess | Use `null` |
 | Strings sanitized | Every string in the document — node/edge fields, case `name`, and all of `_meta` (timeline, gaps and their quoted `claim` text, patterns, candidates, business_profile prose) — contains no HTML tags or control characters, each ≤ 200 chars (Hard rule 5) | Strip and truncate |
 | No API key | The apikey string appears nowhere in the JSON | Remove it |
 | Evidence-backed roles | Every `attacker_eoa`/`scam_contract`/`victim_wallet` role has API evidence, not just a user claim | Downgrade to `unknown_*?`, note in gaps |
+
+For cross-endpoint duplicates, decoded receipt logs are canonical. When a `tokentx`, `tokennfttx`, or `token1155tx` row describes a movement already represented by a receipt log from the same `chainid` and `txhash`, use the account-feed row only to verify or fill token metadata; do not add another movement. Never collapse two canonical receipt logs merely because their source, target, token, and amount match — distinct `logIndex` values are distinct movements.
 
 ---
 
@@ -924,13 +934,13 @@ Node `id` values must be short unique alphanumeric strings (6–10 chars, e.g. `
 
 ### Edge merging
 
-Repeated movements between the same pair collapse into one edge. Merge rows whose `(chainid, source, target, token, type)` all match — a DAO paying one vendor 200 times in USDC is a single edge, not 200 parallel ones. On the merged edge:
+Repeated movements between the same pair collapse into one edge. First remove only exact duplicate source movements using Step 4B; then merge the remaining rows whose `(chainid, source, target, token, type)` all match. A DAO paying one vendor 200 times in USDC is a single edge, not 200 parallel ones, and two legitimate transfer logs in one transaction both contribute to the merged amount. On the merged edge:
 
-- `txcount` = number of merged transactions.
+- `txcount` = number of distinct merged `txhash` values, not the number of movement rows.
 - `txhash` = the **earliest** tx in the group. It is a real hash from this run and must still pass the Step 4B endpoint check (Hard rule 10).
-- `amount` = the summed decimal total across the group.
+- `amount` = the summed decimal total across all deduplicated movement rows in the group.
 - `timestamp` = the earliest tx's timestamp.
-- Every merged hash — including the earliest — is recorded under `_meta.edge_txhashes[edge.id]`, in the same ascending block order.
+- Every distinct merged hash — including the earliest — is recorded once under `_meta.edge_txhashes[edge.id]`, in the same ascending block order.
 
 Do **not** add a `txhashes` key to the edge itself; `schemaVersion: 1` edges carry exactly the keys shown below, and the canvas may reject unknown fields. Cap `_meta.edge_txhashes[id]` at 500 hashes per edge; if the group is larger, keep the first 500, keep the true `txcount`, and add `edge_txhashes_truncated` to `_meta.gaps`.
 
@@ -1020,7 +1030,14 @@ Also append a `_meta` block after the nodes/edges:
     "seed_txhashes": ["0x..."],
     "seed_addresses": ["0x..."],
     "hops_traced": 2,
-    "trace_window": { "startblock": 0, "endblock": 0, "days": 7 },
+    "trace_window": {
+      "startblock": 0,
+      "endblock": 0,
+      "start_timestamp": "2024-03-15T10:23:00Z",
+      "end_timestamp": "2024-03-22T10:23:00Z",
+      "days": 7,
+      "source": "seed_tx"
+    },
     "edge_txhashes": {
       "e_subj_atk": ["0x...", "0x..."]
     },
@@ -1083,7 +1100,7 @@ Print the full path to the JSON file at the end of your reply.
 **Maintaining this table.** A hit here assigns `mixer_contract`/`cex_deposit`, halts the branch, and — for the Tornado rows — carries a sanctions implication into a document that reads as Etherscan-grounded evidence. A wrong row therefore brands an innocent contract. Never add or edit a row from memory. Verify first, on-chain, and record how:
 
 - Tornado ETH pools expose `denomination()` (`0x8bca6d16`). `eth_call` it: the returned wei must equal the labelled denomination. Tornado has exactly four ETH pools — 0.1, 1, 10, 100. **There is no 1000 ETH pool.** The Router and Proxy have no `denomination()`.
-- For every other row, confirm the identity with a `nametag` hit (Step 2) or `getsourcecode` `ContractName`, and confirm the address is live with `eth_getCode` / `balance`.
+- For every other row, require a `nametag` hit (Step 2) and confirm the address is live with `eth_getCode` / `balance`. `getsourcecode` `ContractName` may be recorded only as corroborating context after identity is established; it is never sufficient to add, label, or retain a landmark.
 - A row that cannot be verified does not go in the table. Leave the address `unknown_*` and let Step 2 classify it.
 
 ---

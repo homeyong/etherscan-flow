@@ -189,20 +189,23 @@ Or set it up ahead of time — run `/permissions` and add the rules, or add them
 <details>
 <summary><b>Codex CLI</b></summary>
 
-Run the trace in an auto-approving mode instead of confirming each command:
-
-```bash
-codex --full-auto "trace this scam 0x…"
-```
-
-Or set it once in `~/.codex/config.toml`:
+Enable workspace writes, outbound network access, and unattended approvals in `~/.codex/config.toml`:
 
 ```toml
-approval_policy = "never"     # don't prompt per command
-sandbox_mode = "workspace-write"  # allows outbound network for the API calls
+approval_policy = "never"
+sandbox_mode = "workspace-write"
+
+[sandbox_workspace_write]
+network_access = true
 ```
 
-Scope this to trusted use — `never` stops all approval prompts, not just Etherscan ones.
+Then run the trace normally:
+
+```bash
+codex "trace this scam 0x…"
+```
+
+`workspace-write` does not enable outbound access by itself; `network_access = true` is required for the Etherscan calls. Scope this configuration to trusted use — `never` stops all approval prompts, not just Etherscan ones, and network access applies to every command in that Codex session.
 </details>
 
 <details>
@@ -279,11 +282,22 @@ Claude Desktop / Claude Code MCP JSON using `mcp-remote`:
   "mcpServers": {
     "etherscan": {
       "command": "npx",
-      "args": ["mcp-remote", "https://mcp.kennydev.xyz/mcp"]
+      "args": [
+        "-y",
+        "mcp-remote",
+        "https://mcp.kennydev.xyz/mcp",
+        "--header",
+        "Authorization:${AUTH_HEADER}"
+      ],
+      "env": {
+        "AUTH_HEADER": "Bearer YOUR_ETHERSCAN_API_KEY"
+      }
     }
   }
 }
 ```
+
+The no-space `Authorization:${AUTH_HEADER}` form also avoids argument escaping problems in Claude Desktop on Windows.
 
 Quick checks:
 
