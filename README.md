@@ -12,7 +12,7 @@ The skill has two modes, plus a document-import path:
 
 - **Strict trace mode:** start from a tx hash or address and follow the money.
 - **Business/entity profile mode:** start from a DAO/protocol/project/business scope, resolve it to verified addresses, then summarize income, spending, categories, and totals inside the JSON.
-- **Document import (into hypothesis validation):** paste a draft case, notes, or a gist/pastebin URL you typed yourself. The skill extracts the addresses and flow claims from it and validates every one against the live API — nothing from the document is copied into the output unverified. The URL fetch is read-only and never carries your API key.
+- **Document import (into hypothesis validation):** paste a draft case, notes, or any link you typed yourself — a gist, a tweet/X post, a news article, a blog post, a forum thread. The skill extracts the addresses and flow claims from it and validates every one against the live API — nothing from the document is copied into the output unverified. The URL fetch is read-only, never carries your API key, and only ever hits links *you* typed (it never crawls links found inside a page). If a page can't be read (login wall, JS-only), it asks you to paste the text instead of stopping.
 
 Named entities such as `ENS DAO` are treated as scope hypotheses, not evidence. The skill resolves them to real `0x...` addresses from user-provided addresses, API-resolved ENS names, or its known-entity scope table — which ships with the well-known ENS DAO candidates (treasury timelock, registrar controllers, token, governor) so `show ENS DAO as a business` works out of the box. Every table candidate is still validated live before it appears in a case.
 
@@ -136,10 +136,12 @@ map income and spending for this protocol treasury 0x<address>
 show where this DAO gets income and how it spends money, with totals, apikey=YOUR_KEY 0x<address>
 ```
 
-Or import a draft/notes and have every claim verified on-chain:
+Or import a draft, notes, or any link and have every claim verified on-chain:
 
 ```
 extract the flows from this gist and build the case: https://gist.github.com/<user>/<id> apikey=YOUR_KEY
+someone reported this scam on X — verify it and build the case: https://x.com/<user>/status/<id>
+build a case from the addresses in this article: https://<news-site>/<path>
 here's my draft case JSON — validate it and produce a verified version: <pasted draft>
 ```
 
