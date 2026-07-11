@@ -225,6 +225,16 @@ codex "trace this scam 0x…"
 There are no per-call prompts here; instead, on paid plans you must **allowlist `api.etherscan.io`** once in the skill's network settings (see Quick start) or the calls are blocked outright.
 </details>
 
+## If your AI's safety filter flags a trace
+
+Fund-flow investigations legitimately mention mixers, laundering, and stolen funds — which can pattern-match a provider's cybersecurity safeguards even though the work is read-only forensics on public data. (Anthropic says its current safeguards are "intentionally broad" and may flag routine security work; other providers have equivalents.) The skill is built to make this a bump, not a wall:
+
+- **It states its purpose up front** — read-only public-ledger forensics, no exploit tooling — and keeps investigative narrative inside the JSON instead of chat commentary, which is where false positives are most often triggered.
+- **Nothing is lost on interruption.** Every API response is appended to a scratchpad fetch log as it arrives; relaunching the same trace resumes from the log instead of re-spending your API budget.
+- **It will not try to evade the filter** — no rewording, no encoding tricks. If the safeguard fires, that's between you and the provider, and the honest fixes are below.
+
+If you hit a false positive on Claude: report it via `/feedback`, and if you do security or forensics work regularly, apply to Anthropic's [Cyber Verification Program](https://support.claude.com/en/articles/14604842-real-time-cyber-safeguards-on-claude) for vetted access to security-sensitive capabilities.
+
 ## Output schema
 
 ```json
