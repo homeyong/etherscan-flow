@@ -29,6 +29,8 @@ flowchart LR
 
 Supported chains: **Ethereum** (default), BNB Chain, Polygon, Arbitrum, Optimism, Base, Avalanche, Fantom.
 
+The skill ships as a lean `SKILL.md` (hard rules, routing, credential order) plus `references/*.md` files the agent reads on demand per step (progressive disclosure — keeps context small so any skills-capable model handles it well). Install the whole folder; `SKILL.md` alone is not the complete skill.
+
 ## Quick start
 
 Pick your tool. Steps are given for **macOS**, **Linux**, and **Windows**.
