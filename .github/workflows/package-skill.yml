@@ -1,0 +1,32 @@
+name: Package skill
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Build skill ZIP
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path package/etherscan-flow | Out-Null
+          Copy-Item SKILL.md, README.md, LICENSE -Destination package/etherscan-flow
+          Copy-Item references -Destination package/etherscan-flow -Recurse
+          Compress-Archive -Path package/etherscan-flow -DestinationPath etherscan-flow.zip
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: etherscan-flow-skill
+          path: etherscan-flow.zip
+          if-no-files-found: error

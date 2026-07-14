@@ -1,12 +1,16 @@
-# Etherscan Flow — Agent Skill
+# Etherscan Flow
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](./LICENSE)
+[![License: MIT](https://img.shields.io/badge/license-MIT-2563eb.svg)](./LICENSE)
+[![Etherscan API V2](https://img.shields.io/badge/Etherscan-API%20V2-21325b.svg)](https://docs.etherscan.io/)
+[![Download ZIP](https://img.shields.io/badge/download-ZIP-16a34a.svg)](https://github.com/homeyong/etherscan-flow/archive/refs/heads/main.zip)
 
-An installable [Agent Skill](https://docs.claude.com/en/docs/agents-and-tools/agent-skills/overview) that maps **any** on-chain money flow. Give it a **transaction hash**, a **wallet address**, or a resolvable **business/entity scope**, and it calls the **Etherscan API V2** to trace the flow and write a single **Etherscan Flow Case** JSON (`nodes` + `edges`) you can import straight into the [Etherscan Flow](https://etherscan.io) canvas.
+**An installable agent skill for tracing, verifying, and visualizing on-chain money flows.**
 
-Use it for a plain transfer, a token launch, a DeFi swap route, an NFT mint — or a full scam/hack investigation (victim → attacker → laundering hops → CEX deposit).
+Give your AI agent a transaction hash, wallet address, resolvable business or entity, draft case, or source URL. Etherscan Flow queries live Etherscan API V2 data and produces a single import-ready **Etherscan Flow Case** JSON file (`nodes` + `edges`).
 
-Output is **JSON only** — every node and edge is grounded in a real API response, never invented.
+Use it for a plain transfer, token launch, DeFi swap route, NFT mint, treasury profile, or a full scam/hack investigation from victim to attacker, laundering hops, and exchange deposit.
+
+Every address, amount, and transaction hash in the output is grounded in a real API response. Flow data is never invented.
 
 The skill has two modes, plus a document-import path:
 
@@ -37,9 +41,23 @@ The tracer treats 100 calls and 20 pages per address as safety ceilings, not tar
 
 Rate control is key-aware. The skill does not assume a fixed requests-per-second value: it follows API/transport signals, adapts concurrency, honors retry guidance, and backs off when a key or endpoint is limited. Every case includes `_meta.performance` counters so a slow run can be diagnosed without exposing credentials.
 
-## Quick start
+## Installation
 
-Pick your tool. Steps are given for **macOS**, **Linux**, and **Windows**.
+Install the complete repository; `SKILL.md` depends on the workflows and schemas in `references/`.
+
+### Download as ZIP
+
+[**Download the latest `main` branch as a ZIP**](https://github.com/homeyong/etherscan-flow/archive/refs/heads/main.zip)
+
+Every push to `main` also builds a clean `etherscan-flow.zip` in the repository's GitHub Actions artifacts. That package contains only `SKILL.md`, `references/`, this README, and the license.
+
+For Claude.ai, open [Claude Skills](https://claude.ai/customize/skills), select **Upload a skill**, and upload the downloaded file. On paid plans, allowlist `api.etherscan.io` in the skill's network settings.
+
+For a local agent, extract the ZIP, rename `etherscan-flow-main` to `etherscan-flow`, and place it in the appropriate skills directory below.
+
+### Install with Git
+
+Choose your agent and operating system.
 
 <details open>
 <summary><b>Claude Code (CLI)</b></summary>
@@ -48,11 +66,21 @@ Clone into your personal skills folder, then invoke `/etherscan-flow`.
 
 **macOS / Linux**
 ```bash
+mkdir -p ~/.claude/skills
 git clone https://github.com/homeyong/etherscan-flow.git ~/.claude/skills/etherscan-flow
 ```
 
+**Windows (Command Prompt / CMD)**
+```bat
+if not exist %USERPROFILE%\.claude\skills mkdir %USERPROFILE%\.claude\skills
+git clone https://github.com/homeyong/etherscan-flow.git %USERPROFILE%\.claude\skills\etherscan-flow
+```
+
+> CMD does not expand `~`. Use `%USERPROFILE%` exactly as shown.
+
 **Windows (PowerShell)**
 ```powershell
+New-Item -ItemType Directory -Force ~/.claude/skills | Out-Null
 git clone https://github.com/homeyong/etherscan-flow.git "$env:USERPROFILE\.claude\skills\etherscan-flow"
 ```
 
@@ -66,11 +94,21 @@ Codex reads skills from `~/.codex/skills/` (support added Dec 2025). Clone into 
 
 **macOS / Linux**
 ```bash
+mkdir -p ~/.codex/skills
 git clone https://github.com/homeyong/etherscan-flow.git ~/.codex/skills/etherscan-flow
 ```
 
+**Windows (Command Prompt / CMD)**
+```bat
+if not exist %USERPROFILE%\.codex\skills mkdir %USERPROFILE%\.codex\skills
+git clone https://github.com/homeyong/etherscan-flow.git %USERPROFILE%\.codex\skills\etherscan-flow
+```
+
+> CMD does not expand `~`. Use `%USERPROFILE%` exactly as shown.
+
 **Windows (PowerShell)**
 ```powershell
+New-Item -ItemType Directory -Force ~/.codex/skills | Out-Null
 git clone https://github.com/homeyong/etherscan-flow.git "$env:USERPROFILE\.codex\skills\etherscan-flow"
 ```
 
