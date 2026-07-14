@@ -2,6 +2,8 @@
 
 > Part of the `etherscan-flow` skill. Read this when the run resolved to the MCP or CLI transport (credentials steps 2–3), or when checking `ETHERSCAN_API_KEY` (credentials step 4). Every Hard rule, the 100-call budget, and the validation rules in `SKILL.md` apply here unchanged.
 
+Initialize the canonical query ledger and adaptive rate controller from `performance.md` before issuing transport calls. No transport may hard-code a global requests-per-second value: the effective limit belongs to the user's key/plan, endpoint, and transport.
+
 ## Transport call mapping
 
 > **MCP transport:** if you resolved to the Etherscan MCP server (credentials step 2), ignore the raw HTTP URLs in Steps 1–4. For each `module={M}&action={A}` call below, invoke the Etherscan MCP tool that performs the same operation (matching module/action — e.g. `account`/`txlist`, `account`/`tokentx`, `account`/`txlistinternal`, `proxy`/`eth_getTransactionByHash`, `proxy`/`eth_getTransactionReceipt`, `nametag`/`getaddresstag`, `contract`/`getsourcecode`), passing the same `chainid`, `address`/`txhash`, and pagination parameters. Do not pass a key — the MCP server supplies it. Every data-integrity, budget (Hard rule 8), and validation rule applies identically on all transports.
@@ -34,8 +36,10 @@ Map API calls to CLI commands:
 Notes on CLI behaviour that the skill depends on:
 
 - `--boolean false` is **required** on `eth_getBlockByNumber`; omitting it returns `json-rpc error -32700: parse error`.
-- `nametag getaddresstag` accepts a **comma-separated address list**. Batch the Step 2 entity set into as few calls as the rate limit allows rather than calling once per address — the run budget is 100 calls (Hard rule 8).
+- `nametag getaddresstag` accepts a **comma-separated address list**. Batch the surviving Step 2 entity set into as few calls as the endpoint accepts rather than calling once per address. If the transport reports a payload/address limit, split to that limit and cache each batch.
 - **Pagination.** `--all` auto-paginates and returns only when it has fetched every page (capped by `--max-pages`, hidden flag, default `20`). It therefore cannot stop early. Use it only for **Step 3B** totals, where you want the whole window. For **Step 3** hop tracing, loop `--page {N} --offset 100` yourself so you can stop the moment you hit a CEX/mixer/bridge landmark or the per-address 20-page cap. Each `--all` invocation silently spends up to 20 calls of the 100-call run budget — count them.
+- **Round trips.** When the harness supports grouped/parallel calls, send only independent requests in the current evidence wave together. Otherwise prefer a transport-native batch/subprocess that returns the wave in one tool call and writes fetch-log rows itself. Never batch dependent waves or expose the API key in argv/logs.
+- **Rate ownership.** MCP/CLI may throttle internally. Use its reported limit/retry signal, do not add a fixed sleep, and reduce the next wave after a rate-limit response. If no signal exists, use the adaptive probing in `performance.md`.
 
 If the CLI command fails because it is not installed, not logged in, or lacks a required endpoint, fall through to the next key source. If it fails because the API returns an error, record that API error in `_meta.gaps` and continue where possible.
 

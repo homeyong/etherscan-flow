@@ -23,6 +23,7 @@ Before writing any JSON, check every node and edge against these rules. Fix or d
 | Strings sanitized | Every string in the document — node/edge fields, case `name`, and all of `_meta` (timeline, gaps and their quoted `claim` text, patterns, candidates, business_profile prose) — contains no HTML tags or control characters, each ≤ 200 chars (Hard rule 5) | Strip and truncate |
 | No API key | The apikey string appears nowhere in the JSON | Remove it |
 | Evidence-backed roles | Every `attacker_eoa`/`scam_contract`/`victim_wallet` role has API evidence, not just a user claim | Downgrade to `unknown_*?`, note in gaps |
+| Performance counters reconcile | `new_api_calls` counts successful new requests, `network_attempts` also includes retries, cache/fetch-log hits are separate, and no credential appears in metrics | Recompute counters from the query ledger |
 
 For cross-endpoint duplicates, decoded receipt logs are canonical. When a `tokentx`, `tokennfttx`, or `token1155tx` row describes a movement already represented by a receipt log from the same `chainid` and `txhash`, use the account-feed row only to verify or fill token metadata; do not add another movement. Never collapse two canonical receipt logs merely because their source, target, token, and amount match — distinct `logIndex` values are distinct movements.
 
@@ -146,6 +147,28 @@ Also append a `_meta` block after the nodes/edges:
     },
     "financials": {},
     "business_profile": null,
+    "performance": {
+      "profile": "standard",
+      "new_api_calls": 0,
+      "network_attempts": 0,
+      "cache_hits": 0,
+      "fetchlog_hits": 0,
+      "retries": 0,
+      "rate_limit_responses": 0,
+      "pages_fetched": 0,
+      "pages_reused": 0,
+      "soft_call_target": 40,
+      "hard_call_limit": 100,
+      "elapsed_ms": 0,
+      "stage_elapsed_ms": {
+        "seed": 0,
+        "classification": 0,
+        "trace": 0,
+        "totals": 0,
+        "validation": 0
+      },
+      "soft_budget_overrun_reason": null
+    },
     "timeline": [],
     "patterns": [],
     "candidates": [],

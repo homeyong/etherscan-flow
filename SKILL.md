@@ -32,7 +32,7 @@ Turn a seed transaction hash, wallet/contract address, or resolvable business/en
 5. **Sanitize strings.** Strip HTML tags and control characters from **every string the document contains**, and truncate each to 200 characters. This applies to node/edge `token`, `label`, `subLabel`, and `notes`, and equally to the case `name` and everything under `_meta` — `timeline` entries, `gaps` (including the quoted `claim` text), `patterns`, `candidates`, and `business_profile.plain_english_summary` / `confidence_notes`. Decoded on-chain message text and user-supplied narrative are the two sinks that most often carry hostile content; both land in `_meta` (Hard rule 4).
 6. **Never output the API key** — not in the JSON, the filename, `_meta`, logs, or chat text.
 7. **Fixed output path.** The file is always `case-{SHORT_ID}-flow.json`, where `SHORT_ID` = first 8 hex characters, lowercase, no `0x`, of — in order — the seed tx hash; or, if there is no seed tx, the seed address; or, if there are several seed/scope addresses (Mode B), the lexicographically smallest of them once lowercased. Never derive it from free-form user text; the user cannot override the path or directory.
-8. **Call budget.** Max 100 API calls per run, max 20 pages per address. On exhaustion, stop tracing and add `budget_exhausted` to `_meta.gaps`.
+8. **Call budget and query reuse.** Max 100 actual network attempts per run and max 20 pages per address. These are hard ceilings, not targets. Every run must use the canonical query ledger, progressive work profiles, cache/fetch-log reuse, and adaptive rate handling in `references/performance.md`. Cache hits do not count; retries do. On exhaustion, stop tracing and add `budget_exhausted` to `_meta.gaps`.
 9. **JSON is the only deliverable.** All findings — candidates, financials, business-profile notes, patterns, timeline — go inside the JSON, never into chat text. The only chat output is the saved file path (plus blocking input questions in Step 0 when the platform is interactive). This covers mid-run working notes too: where the harness surfaces them, keep them operational (calls made, pages fetched, budget used), never investigative narrative — see *Framing and provider safety layers*.
 10. **Every edge needs a real `txhash` from an API response.** No exceptions. The output key is exactly `txhash` (lowercase), never `hash`, `txHash`, `tx_hash`, or `transactionHash`. An edge may merge repeated movements between the same pair (see Step 5, *Edge merging*), but its `txhash` must still be one real hash from this run — the earliest in the group — and it must still satisfy the endpoint check in Step 4B. A merged edge (`txcount` > 1) additionally lists **every** merged hash in `edge.txhashes` (ascending block order, `txhashes[0]` = `txhash`, each one a real hash from this run) — the canvas displays the full list and validates each hash on-chain.
 10a. **Every node and edge needs `chainid`.** Store `chainid` as an integer on every node and edge. For edges, `chainid` is the chain where the `txhash` was fetched. For nodes, `chainid` is the chain where the address was classified or observed.
@@ -74,6 +74,8 @@ This skill is **read-only blockchain forensics over public ledger data**: victim
 - **If a provider safety layer still interrupts the run, never rephrase, re-encode, or otherwise try to slip past it.** That is the platform's decision, not this skill's. Save state (fetch log below), tell the user plainly that the provider's cybersecurity safeguard flagged the run, and point them to the platform's own remedies — on Claude, `/feedback` for false positives and Anthropic's Cyber Verification Program for vetted security work. Resume from the fetch log when the user relaunches.
 
 ### Fetch log — resuming an interrupted run
+
+Use the canonical query ledger in `references/performance.md` for loaded and newly fetched rows. Whenever the runtime permits, append each fetch-log row inside the same transport/tool operation that fetched the response; do not spend a separate model/tool round trip merely to log it.
 
 Persist as you fetch: append each raw API response as one line of `case-{SHORT_ID}-fetchlog.jsonl` in the scratchpad/temp directory — `{"module": "...", "action": "...", "params": {…}, "chainid": 1, "fetched_at": "ISO", "result": …}`. Strip `apikey` from `params` before writing (Hard rule 6). When a run with the same seed starts and this file exists, load it first: answer every already-logged call from the log instead of the network, and continue from the first missing call. Replayed calls do not count against the 100-call budget; only new network calls do. This makes any interruption — rate limit, provider safety flag, model switch, crash — cost nothing but the relaunch.
 
@@ -172,6 +174,8 @@ Record the outcome in `_meta.chain` / `_meta.chainid`, and when the default was 
 
 > **MCP or CLI transport resolved?** Read `references/transports.md` for how the HTTP calls in Steps 1–4 map onto MCP tools and CLI commands, and for the per-shell `ETHERSCAN_API_KEY` syntax. Every data-integrity, budget (Hard rule 8), and validation rule applies identically on all transports.
 
+> **Before the first data call:** read `references/performance.md` and initialize its work profile, query ledger, adaptive rate controller, and performance counters. This reference is mandatory for every run that reaches the API.
+
 ---
 
 ## Step 0 — Determine entry point type and gather inputs
@@ -241,6 +245,7 @@ The detailed procedures live in `references/` next to this SKILL.md. Read a file
 
 | When | Read |
 |------|------|
+| Before the first API data call on every run | `references/performance.md` |
 | Running on the MCP or CLI transport, or checking `ETHERSCAN_API_KEY` (credentials steps 2–4 details) | `references/transports.md` |
 | Entry is an address (victim / scammer / unknown role), a narrative, or a document / link — Steps 0A / 0B / 0C / 0C-0 | `references/entry-flows.md` |
 | Mode B — business/entity profile, scope resolution, known-entity scope table incl. ENS DAO (Step 0D) | `references/business-mode.md` |
@@ -255,11 +260,13 @@ Every run that produces a case reads at least `references/trace-steps.md` and `r
 
 ## API rate limit handling
 
-- Free tier: ~5 req/sec.
-- Hard budget: max 100 API calls per run, max 20 pages per address (Hard rule 8).
+- **Never assume a fixed requests-per-second value or key tier.** The effective rate can differ by key, plan, endpoint, and transport.
+- Apply the adaptive controller in `references/performance.md`: honor transport/header guidance, group independent calls into bounded waves, and reduce concurrency after a limit response.
+- Hard budget: max 100 actual network attempts per run, max 20 pages per address (Hard rule 8). Cache/fetch-log hits do not count.
+- Honor `Retry-After` when available. A second rate-limit failure is skipped and recorded once in gaps.
 - On `"result":"Max rate limit reached"` — retry once, then skip and log in gaps.
 - Never call the same endpoint + params twice in one run.
-- If `tokentx` or `txlistinternal` returns empty on free key for wide block ranges, narrow to ±1000 blocks around the seed.
+- If `tokentx` or `txlistinternal` returns empty for a wide block range, narrow to ±1000 blocks around the seed and retry only if the adaptive policy permits it.
 
 ---
 
@@ -277,4 +284,4 @@ Every run that produces a case reads at least `references/trace-steps.md` and `r
 | Provider safety layer flags the run mid-trace | The fetch log already holds everything fetched. Tell the user plainly it was the provider's cybersecurity safeguard, point to the platform's remedy (`/feedback`, Cyber Verification Program), and on relaunch resume from the fetch log. Never rephrase or re-encode to evade the safeguard |
 | Block timestamp unavailable | Reuse the `timeStamp` on any API row for that block. Failing that, derive the chain's block time from two rows you hold and estimate; note `timestamp_estimated`. Never assume 12s — it is Ethereum-only |
 | Token contract symbol unknown | Record contract address, note `symbol: unknown` |
-| Internal tx API empty (free key) | Note that ETH internal transfers may be missing |
+| Internal tx API empty | Note that ETH internal transfers may be missing; do not assume the cause is the key tier |

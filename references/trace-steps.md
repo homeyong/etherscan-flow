@@ -42,9 +42,16 @@ Every address that appears as `from`/`to`/operator/spender in these logs goes in
 
 When creating an edge from receipt logs, set `edge.txhash = log.transactionHash || receipt.result.transactionHash || {TXHASH}`. Do not leave it blank just because the log field is named `transactionHash` instead of `txhash`.
 
-### Cross-check via the account token feeds (all address types)
+### Targeted cross-check via account token feeds
 
-For **each address** collected so far (tx `from`, tx `to`, and every log participant), confirm the movements and catch anything outside the receipt window:
+Receipt logs are primary evidence. Do **not** call all three account token feeds for every log participant. Build a targeted set containing only:
+
+- seed `from`/`to` addresses whose movements are incomplete in the receipt;
+- surviving endpoints needing direction or metadata validation;
+- one surviving endpoint per token contract whose symbol/decimals remain unresolved; and
+- token standards that actually appear in the receipt or another held response.
+
+For each targeted address, call only the applicable standard:
 
 ```
 GET https://api.etherscan.io/v2/api?chainid={CHAINID}&module=account&action=tokentx&address={ADDRESS}&startblock={BLOCK-2}&endblock={BLOCK+2}&sort=asc&apikey={APIKEY}        # ERC-20
@@ -52,7 +59,7 @@ GET https://api.etherscan.io/v2/api?chainid={CHAINID}&module=account&action=toke
 GET https://api.etherscan.io/v2/api?chainid={CHAINID}&module=account&action=token1155tx&address={ADDRESS}&startblock={BLOCK-2}&endblock={BLOCK+2}&sort=asc&apikey={APIKEY}    # ERC-1155
 ```
 
-Prefer the address(es) actually involved in the seed tx; stay within the call budget (Hard rule 8) — the receipt-log parse above is the primary source, these calls resolve token symbols/decimals and verify.
+Never call `tokennfttx` or `token1155tx` merely because those endpoints exist. Query each canonical `(chainid, token contract)` metadata need once and reuse it. Group independent applicable calls into the current evidence wave under `performance.md`.
 
 Collect every unique address seen across all responses into the **entity set**.
 
@@ -64,12 +71,12 @@ Collect every unique address seen across all responses into the **entity set**.
 
 | Tier | Which addresses | Calls to spend |
 |------|-----------------|----------------|
-| **Full** | The seed address(es), and any address that is an endpoint of a surviving edge | `eth_getCode`, `balance`, `txlist` first/last, `nametag`, plus `getsourcecode` if it is a contract |
+| **Full** | Seed addresses and endpoints of surviving edges | `eth_getCode` and batched `nametag`; add `balance`, first/last `txlist`, or `getsourcecode` only when that evidence is needed for totals, role, or a surviving label |
 | **Minimal** | Leaf and terminal addresses — token contracts appearing only as a log emitter, landmark hits (CEX/mixer/bridge, already identified and their branch stopped), and any address at the depth limit | `eth_getCode` only, plus the batched `nametag` below |
 
 Resolve `nametag` for the **whole entity set in one batched call** (see below) before you decide tiers — a nametag hit both identifies the address and lets you drop it to Minimal, because a curated label beats any heuristic you would have spent four calls deriving.
 
-Budget the tiers before you start. A typical swap case should classify in roughly 18 calls, not 55, leaving ~80 for Steps 3 and 3B. If tiering still cannot fit the set, classify Full-tier addresses first, downgrade the rest to Minimal, and note `classification_reduced` in `_meta.gaps`.
+Budget tiers before starting. Classify only nodes likely to survive into output, and stop enriching a node when its type and evidence-backed role are sufficient. Balance, account age, lifetime activity, and source code are conditional evidence—not a checklist. If the set still cannot fit, classify Full-tier addresses first, downgrade the rest to Minimal, and note `classification_reduced` in `_meta.gaps`.
 
 ### Check if contract
 ```
@@ -92,7 +99,7 @@ Repeat with `sort=desc` for last 5 txs.
 ```
 GET https://api.etherscan.io/v2/api?chainid={CHAINID}&module=nametag&action=getaddresstag&address={ADDR1},{ADDR2},{ADDR3},…&apikey={APIKEY}
 ```
-`address` takes a **comma-separated list**. Send the entity set in as few batched calls as the endpoint accepts — never one call per address, which alone can exhaust the run budget. Rate limit: 2 calls/sec. Skip silently if the API key does not have Pro Plus access (status ≠ `"1"`); a free-tier key returns `"Sorry, it looks like you are trying to access an API Exclusive endpoint"` — treat that as "no nametags available", note it once in `_meta.gaps`, and do not retry per address.
+`address` takes a **comma-separated list**. Send surviving entities in as few batched calls as the endpoint accepts—never one call per address. Do not assume a fixed endpoint rate; obey the adaptive transport policy. If the key lacks access, treat the response as "no nametags available", note it once in `_meta.gaps`, and do not retry per address.
 
 Response fields to use (`result` is one entry per requested address — match them back by `address`, do not assume `result[0]`):
 
@@ -140,12 +147,14 @@ CEX deposit heuristics: first tx from an exchange hot wallet, >1000 lifetime txs
 
 Starting from the address that received the drained funds, trace outgoing transfers for up to N hops (default 2).
 
-**Paginate — do not judge a hop from its first page.** A busy attacker, laundering hub, or sweeper wallet can bury the real CEX/mixer/bridge hop hundreds of records deep; reading only `page=1` would miss it and end the trace at the wrong place. For each hop, increment `page` (with `offset=100`) until one of these stops you:
+**Paginate progressively—do not either stop blindly at page 1 or fetch 20 pages blindly.** Fetch the initial wave defined by the selected performance profile, analyze it, and widen only branches that remain active and unresolved. For each widened hop, increment `page` with `offset=100` until one of these stops you:
 
 - a page returns fewer than `offset` results (last page reached), **or**
 - you hit a landmark hop worth stopping on (CEX deposit / mixer / bridge — see stop conditions below), **or**
 - the address is high-volume (10,000+ txs — label high-volume, stop, don't enumerate), **or**
 - the per-address page budget (20 pages, Hard rule 8) or the 100-call run budget is hit — then add `budget_exhausted` to `_meta.gaps`.
+
+Normal and token pages for the same address/range are independent and may share one bounded tool wave. After each wave, update terminal/landmark decisions before requesting more pages. Record every page in the query ledger for Step 3B reuse.
 
 ### Resolve the trace window in *time*, never in a fixed block count
 
@@ -191,17 +200,17 @@ Stop a branch when you hit:
 
 ## Step 3B — Calculate financial totals
 
-After completing hop tracing, calculate the actual financial exposure. In strict scam/hack cases, this estimates funds lost, received, forwarded, and retained. In business/entity profile mode, this estimates inbound income, outbound spending, and net movement for the validated scope addresses. This step requires fetching **all pages** within the selected block/time window — do not skip after page 1 unless constrained by the call budget.
+After completing hop tracing, calculate the actual financial exposure. This step requires all relevant pages within the selected window unless constrained by the call budget, but it must reuse compatible Step 0/Step 3 pages and fetch only missing continuation pages.
 
 ### Paginate all normal transactions
 
 Repeat this call incrementing `page` until a page returns fewer than `offset` results (meaning you've reached the last page):
 
 ```
-GET https://api.etherscan.io/v2/api?chainid={CHAINID}&module=account&action=txlist&address={SUBJECT_OR_SCOPE_ADDRESS}&startblock={WINDOW_STARTBLOCK}&endblock={WINDOW_ENDBLOCK}&page={N}&offset=50&sort=asc&apikey={APIKEY}
+GET https://api.etherscan.io/v2/api?chainid={CHAINID}&module=account&action=txlist&address={SUBJECT_OR_SCOPE_ADDRESS}&startblock={WINDOW_STARTBLOCK}&endblock={WINDOW_ENDBLOCK}&page={N}&offset=100&sort=asc&apikey={APIKEY}
 ```
 
-Stop when a page has 0 results or fewer than 50, or when the 20-pages-per-address budget is hit (note `budget_exhausted` in `_meta.gaps`).
+Load exact matching pages from the query ledger first and continue at the first missing page; never restart at page 1. Stop on 0 or fewer than 100 rows, or at the 20-page ceiling. Count reused pages in `_meta.performance.pages_reused`, not as new calls.
 
 ### Classify each transaction
 

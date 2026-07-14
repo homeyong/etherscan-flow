@@ -28,22 +28,22 @@ Every candidate is still only a hypothesis until validated by API data in this r
 
 ### 0D-2. Validate candidate addresses
 
-For each candidate address, call:
+Validate candidates in evidence waves rather than issuing a fixed five-call checklist. Start with the two independent activity probes below and reuse them if already in the query ledger:
 
 ```
-GET https://api.etherscan.io/v2/api?chainid={CHAINID}&module=proxy&action=eth_getCode&address={ADDRESS}&apikey={APIKEY}
-GET https://api.etherscan.io/v2/api?chainid={CHAINID}&module=account&action=balance&address={ADDRESS}&tag=latest&apikey={APIKEY}
 GET https://api.etherscan.io/v2/api?chainid={CHAINID}&module=account&action=txlist&address={ADDRESS}&startblock=0&endblock=99999999&page=1&offset=25&sort=desc&apikey={APIKEY}
 GET https://api.etherscan.io/v2/api?chainid={CHAINID}&module=account&action=tokentx&address={ADDRESS}&page=1&offset=25&sort=desc&apikey={APIKEY}
 ```
 
-For contracts, also call:
+If neither probe confirms the candidate, or contract/EOA type is needed, call `eth_getCode`. Call `balance` only when current balance is requested or required in output. For a confirmed contract, call `getsourcecode` only when identity/business-role evidence remains unresolved:
 
 ```
+GET https://api.etherscan.io/v2/api?chainid={CHAINID}&module=proxy&action=eth_getCode&address={ADDRESS}&apikey={APIKEY}
+GET https://api.etherscan.io/v2/api?chainid={CHAINID}&module=account&action=balance&address={ADDRESS}&tag=latest&apikey={APIKEY}
 GET https://api.etherscan.io/v2/api?chainid={CHAINID}&module=contract&action=getsourcecode&address={ADDRESS}&apikey={APIKEY}
 ```
 
-Optionally call nametag if available under Step 2 rules. Include a candidate in the final scope only if at least one API response confirms the address exists or has transaction/balance/code evidence. If a known table label is not supported by sourcecode/nametag/transaction behavior, keep the address but mark the label as a hypothesis in `notes` and `_meta.business_profile.confidence_notes`.
+Use one batched nametag wave for surviving candidates if available. Stop validating once sufficient API evidence confirms existence and scope confidence; do not spend balance/sourcecode calls mechanically. Include a candidate only if at least one API response confirms it. Unsupported table labels remain hypotheses in `notes` and confidence notes.
 
 ### 0D-3. Choose the business window
 
@@ -53,7 +53,7 @@ Step 3 converts these timestamps to block numbers once for the run. State the ef
 
 ### 0D-4. Classify income and spending
 
-For each validated scope address, paginate normal and token transfers using the Step 3 pagination rules, bounded by the chosen business window and the call budget. Classify rows:
+For each validated scope address, reuse compatible activity/Step 3 pages from the query ledger, then fetch only missing continuation pages. Use `offset=100`, the same block window, and `sort=asc` so totals pages remain reusable. Classify rows:
 
 | Direction | Category | Rule |
 |-----------|----------|------|

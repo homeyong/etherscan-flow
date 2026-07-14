@@ -31,6 +31,12 @@ Supported chains: **Ethereum** (default), BNB Chain, Polygon, Arbitrum, Optimism
 
 The skill ships as a lean `SKILL.md` (hard rules, routing, credential order) plus `references/*.md` files the agent reads on demand per step (progressive disclosure — keeps context small so any skills-capable model handles it well). Install the whole folder; `SKILL.md` alone is not the complete skill.
 
+## Performance model
+
+The tracer treats 100 calls and 20 pages per address as safety ceilings, not targets. It caches canonical requests, resumes from its fetch log, batches independent calls into bounded evidence waves, widens only active branches, and reuses tracing pages when calculating totals. Standard runs use a 40-call soft target; explicit quick and deep requests select different soft targets without weakening the hard grounding rules.
+
+Rate control is key-aware. The skill does not assume a fixed requests-per-second value: it follows API/transport signals, adapts concurrency, honors retry guidance, and backs off when a key or endpoint is limited. Every case includes `_meta.performance` counters so a slow run can be diagnosed without exposing credentials.
+
 ## Quick start
 
 Pick your tool. Steps are given for **macOS**, **Linux**, and **Windows**.
