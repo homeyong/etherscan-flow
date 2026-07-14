@@ -8,12 +8,13 @@ Use it for a plain transfer, a token launch, a DeFi swap route, an NFT mint — 
 
 Output is **JSON only** — every node and edge is grounded in a real API response, never invented.
 
-The skill has two modes:
+The skill has two modes, plus a document-import path:
 
 - **Strict trace mode:** start from a tx hash or address and follow the money.
 - **Business/entity profile mode:** start from a DAO/protocol/project/business scope, resolve it to verified addresses, then summarize income, spending, categories, and totals inside the JSON.
+- **Document import (into hypothesis validation):** paste a draft case, notes, or any link you typed yourself — a gist, a tweet/X post, a news article, a blog post, a forum thread. The skill extracts the addresses and flow claims from it and validates every one against the live API — nothing from the document is copied into the output unverified. The URL fetch is read-only, never carries your API key, and only ever hits links *you* typed (it never crawls links found inside a page). If a page can't be read (login wall, JS-only), it asks you to paste the text instead of stopping.
 
-Named entities such as `ENS DAO` are treated as scope hypotheses, not evidence. The skill must resolve them to real `0x...` addresses from user-provided addresses, API-resolved ENS names, or a maintained known-entity scope table before it can write a case.
+Named entities such as `ENS DAO` are treated as scope hypotheses, not evidence. The skill resolves them to real `0x...` addresses from user-provided addresses, API-resolved ENS names, or its known-entity scope table — which ships with the well-known ENS DAO candidates (treasury timelock, registrar controllers, token, governor) so `show ENS DAO as a business` works out of the box. Every table candidate is still validated live before it appears in a case.
 
 ## How it works
 
@@ -27,6 +28,14 @@ flowchart LR
 ```
 
 Supported chains: **Ethereum** (default), BNB Chain, Polygon, Arbitrum, Optimism, Base, Avalanche, Fantom.
+
+The skill ships as a lean `SKILL.md` (hard rules, routing, credential order) plus `references/*.md` files the agent reads on demand per step (progressive disclosure — keeps context small so any skills-capable model handles it well). Install the whole folder; `SKILL.md` alone is not the complete skill.
+
+## Performance model
+
+The tracer treats 100 calls and 20 pages per address as safety ceilings, not targets. It caches canonical requests, resumes from its fetch log, batches independent calls into bounded evidence waves, widens only active branches, and reuses tracing pages when calculating totals. Standard runs use a 40-call soft target; explicit quick and deep requests select different soft targets without weakening the hard grounding rules.
+
+Rate control is key-aware. The skill does not assume a fixed requests-per-second value: it follows API/transport signals, adapts concurrency, honors retry guidance, and backs off when a key or endpoint is limited. Every case includes `_meta.performance` counters so a slow run can be diagnosed without exposing credentials.
 
 ## Quick start
 
@@ -82,9 +91,11 @@ Prefer to scope it to one project? Clone into `.codex/skills/etherscan-flow` in 
 
 ## Your Etherscan API key — and how private it really is
 
-An Etherscan key is read-only and rate-limited, so leaking one is low-stakes — but keep it out of the chat transcript where you reasonably can. The skill picks a key source in this order, first match wins:
+Etherscan API V2 requires a key — there is no anonymous or demo tier. A key is read-only and rate-limited, so leaking one is low-stakes, but keep it out of the chat transcript where you reasonably can. The skill picks a key source in this order, first match wins:
 
-**inline `apikey=` → Etherscan MCP → `ETHERSCAN_API_KEY` env var → local key file → demo key**
+**inline `apikey=` → Etherscan MCP → Etherscan CLI → `ETHERSCAN_API_KEY` env var → local key file**
+
+First match wins and the order is binding: an inline `apikey=` anywhere in your prompt **always** takes precedence — the skill must use it and must not go probing the CLI or demanding `ETHERSCAN_API_KEY` when you've already pasted a key. If none resolve, the skill stops and asks for a key. It never writes a case file without live API data.
 
 **Where the key actually goes depends on where you run it:**
 
@@ -127,9 +138,19 @@ build a case for this hack 0x<address> apikey=YOUR_KEY
 Or profile a DAO/protocol/business from a verified scope:
 
 ```
+show ENS DAO as a business
 show ENS DAO as a business using these treasury, controller, and timelock addresses: 0x<address> 0x<address>
 map income and spending for this protocol treasury 0x<address>
 show where this DAO gets income and how it spends money, with totals, apikey=YOUR_KEY 0x<address>
+```
+
+Or import a draft, notes, or any link and have every claim verified on-chain:
+
+```
+extract the flows from this gist and build the case: https://gist.github.com/<user>/<id> apikey=YOUR_KEY
+someone reported this scam on X — verify it and build the case: https://x.com/<user>/status/<id>
+build a case from the addresses in this article: https://<news-site>/<path>
+here's my draft case JSON — validate it and produce a verified version: <pasted draft>
 ```
 
 You get a JSON file. Open [Etherscan Flow](https://etherscan.io), choose **Import**, and paste it — the schema maps one-to-one, no reformatting.
@@ -156,7 +177,7 @@ etherscan proxy eth_getTransactionByHash 0x... --chain ethereum --json
 Transport preference is:
 
 ```text
-inline apikey= -> Etherscan MCP -> Etherscan CLI -> ETHERSCAN_API_KEY -> local key file -> demo key
+inline apikey= -> Etherscan MCP -> Etherscan CLI -> ETHERSCAN_API_KEY -> local key file
 ```
 
 ## Stop it asking permission for every call
@@ -187,20 +208,23 @@ Or set it up ahead of time — run `/permissions` and add the rules, or add them
 <details>
 <summary><b>Codex CLI</b></summary>
 
-Run the trace in an auto-approving mode instead of confirming each command:
-
-```bash
-codex --full-auto "trace this scam 0x…"
-```
-
-Or set it once in `~/.codex/config.toml`:
+Enable workspace writes, outbound network access, and unattended approvals in `~/.codex/config.toml`:
 
 ```toml
-approval_policy = "never"     # don't prompt per command
-sandbox_mode = "workspace-write"  # allows outbound network for the API calls
+approval_policy = "never"
+sandbox_mode = "workspace-write"
+
+[sandbox_workspace_write]
+network_access = true
 ```
 
-Scope this to trusted use — `never` stops all approval prompts, not just Etherscan ones.
+Then run the trace normally:
+
+```bash
+codex "trace this scam 0x…"
+```
+
+`workspace-write` does not enable outbound access by itself; `network_access = true` is required for the Etherscan calls. Scope this configuration to trusted use — `never` stops all approval prompts, not just Etherscan ones, and network access applies to every command in that Codex session.
 </details>
 
 <details>
@@ -208,6 +232,16 @@ Scope this to trusted use — `never` stops all approval prompts, not just Ether
 
 There are no per-call prompts here; instead, on paid plans you must **allowlist `api.etherscan.io`** once in the skill's network settings (see Quick start) or the calls are blocked outright.
 </details>
+
+## If your AI's safety filter flags a trace
+
+Fund-flow investigations legitimately mention mixers, laundering, and stolen funds — which can pattern-match a provider's cybersecurity safeguards even though the work is read-only forensics on public data. (Anthropic says its current safeguards are "intentionally broad" and may flag routine security work; other providers have equivalents.) The skill is built to make this a bump, not a wall:
+
+- **It states its purpose up front** — read-only public-ledger forensics, no exploit tooling — and keeps investigative narrative inside the JSON instead of chat commentary, which is where false positives are most often triggered.
+- **Nothing is lost on interruption.** Every API response is appended to a scratchpad fetch log as it arrives; relaunching the same trace resumes from the log instead of re-spending your API budget.
+- **It will not try to evade the filter** — no rewording, no encoding tricks. If the safeguard fires, that's between you and the provider, and the honest fixes are below.
+
+If you hit a false positive on Claude: report it via `/feedback`, and if you do security or forensics work regularly, apply to Anthropic's [Cyber Verification Program](https://support.claude.com/en/articles/14604842-real-time-cyber-safeguards-on-claude) for vetted access to security-sensitive capabilities.
 
 ## Output schema
 
@@ -244,13 +278,13 @@ Codex config (`~/.codex/config.toml`):
 url = "https://mcp.kennydev.xyz/mcp"
 
 [mcp_servers.etherscan.headers]
-Authorization = "Bearer YourApiKeyToken"
+Authorization = "Bearer YOUR_ETHERSCAN_API_KEY"
 ```
 
 Codex CLI:
 
 ```bash
-export ETHERSCAN_API_KEY=YourApiKeyToken
+export ETHERSCAN_API_KEY=YOUR_ETHERSCAN_API_KEY
 codex mcp add etherscan --url https://mcp.kennydev.xyz/mcp \
   --bearer-token-env-var ETHERSCAN_API_KEY
 ```
@@ -258,7 +292,7 @@ codex mcp add etherscan --url https://mcp.kennydev.xyz/mcp \
 On Windows PowerShell:
 
 ```powershell
-$env:ETHERSCAN_API_KEY="YourApiKeyToken"
+$env:ETHERSCAN_API_KEY="YOUR_ETHERSCAN_API_KEY"
 codex mcp add etherscan --url https://mcp.kennydev.xyz/mcp `
   --bearer-token-env-var ETHERSCAN_API_KEY
 ```
@@ -267,7 +301,7 @@ Claude Code CLI:
 
 ```bash
 claude mcp add --transport http etherscan https://mcp.kennydev.xyz/mcp \
-  --header "Authorization: Bearer YourApiKeyToken"
+  --header "Authorization: Bearer YOUR_ETHERSCAN_API_KEY"
 ```
 
 Claude Desktop / Claude Code MCP JSON using `mcp-remote`:
@@ -277,11 +311,22 @@ Claude Desktop / Claude Code MCP JSON using `mcp-remote`:
   "mcpServers": {
     "etherscan": {
       "command": "npx",
-      "args": ["mcp-remote", "https://mcp.kennydev.xyz"]
+      "args": [
+        "-y",
+        "mcp-remote",
+        "https://mcp.kennydev.xyz/mcp",
+        "--header",
+        "Authorization:${AUTH_HEADER}"
+      ],
+      "env": {
+        "AUTH_HEADER": "Bearer YOUR_ETHERSCAN_API_KEY"
+      }
     }
   }
 }
 ```
+
+The no-space `Authorization:${AUTH_HEADER}` form also avoids argument escaping problems in Claude Desktop on Windows.
 
 Quick checks:
 
@@ -290,11 +335,11 @@ curl -s https://mcp.kennydev.xyz/health
 curl -s -X POST https://mcp.kennydev.xyz/mcp \
   -H "Content-Type: application/json" \
   -H "Accept: application/json, text/event-stream" \
-  -H "Authorization: Bearer YourApiKeyToken" \
+  -H "Authorization: Bearer YOUR_ETHERSCAN_API_KEY" \
   -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}'
 ```
 
-Replace `YourApiKeyToken` with your own Etherscan key. Do not paste a shared
+Replace `YOUR_ETHERSCAN_API_KEY` with your own Etherscan key. Do not paste a shared
 production key into public docs, screenshots, or support messages.
 
 ## Tool coverage
