@@ -18,7 +18,7 @@ Before writing any JSON, check every node and edge against these rules. Fix or d
 | Address is valid hex | Every `address` field is a valid 42-char `0x…` hex string | Drop the node, note in gaps |
 | ENS/name stored separately | ENS names, exchange display names, project aliases, or second-line labels are in `label`/`subLabel`, never `address` | Move display text to `label` or `subLabel`; keep only the verified 0x address in `address` |
 | No duplicate movements | Deduplicate only when the exact same API movement was fetched through more than one query. A tx hash identifies a transaction, not every movement inside it: use `(chainid, txhash)` for a top-level normal tx, `(chainid, txhash, logIndex)` for event-log/token movements, and `(chainid, txhash, traceId)` for internal movements. If an endpoint provides no stable movement index, compare the complete normalized source row rather than dropping same-tx movements. | Remove exact source duplicates, then perform Step 5 edge merging |
-| Merged edges are consistent | If an edge merges several txs (`txcount` > 1), its `txhash` is the earliest tx in the group, `amount` is the summed decimal total, and every merged hash is listed under `_meta.edge_txhashes[edge.id]` | Recompute, or split the edge |
+| Merged edges are consistent | If an edge merges several txs (`txcount` > 1), its `txhash` is the earliest tx in the group, `amount` is the summed decimal total, and `edge.txhashes` lists every distinct merged hash (earliest first, so `txhashes[0] === txhash`) | Recompute, or split the edge |
 | Token symbol resolved | If symbol is unknown after tokentx lookup, write `null` not an empty string or guess | Use `null` |
 | Strings sanitized | Every string in the document — node/edge fields, case `name`, and all of `_meta` (timeline, gaps and their quoted `claim` text, patterns, candidates, business_profile prose) — contains no HTML tags or control characters, each ≤ 200 chars (Hard rule 5) | Strip and truncate |
 | No API key | The apikey string appears nowhere in the JSON | Remove it |
@@ -43,11 +43,11 @@ Repeated movements between the same pair collapse into one edge. First remove on
 
 - `txcount` = number of distinct merged `txhash` values, not the number of movement rows.
 - `txhash` = the **earliest** tx in the group. It is a real hash from this run and must still pass the Step 4B endpoint check (Hard rule 10).
+- `txhashes` = **every** distinct merged hash — including the earliest — once each, in ascending block order, so `txhashes[0] === txhash`. Each entry is a real hash from this run (Hard rule 10 applies to all of them). Cap at 100 hashes per edge; if the group is larger, keep the earliest 100, keep the true `txcount`, and add `edge_txhashes_truncated` to `_meta.gaps`.
 - `amount` = the summed decimal total across all deduplicated movement rows in the group.
 - `timestamp` = the earliest tx's timestamp.
-- Every distinct merged hash — including the earliest — is recorded once under `_meta.edge_txhashes[edge.id]`, in the same ascending block order.
 
-Do **not** add a `txhashes` key to the edge itself; `schemaVersion: 1` edges carry exactly the keys shown below, and the canvas may reject unknown fields. Cap `_meta.edge_txhashes[id]` at 500 hashes per edge; if the group is larger, keep the first 500, keep the true `txcount`, and add `edge_txhashes_truncated` to `_meta.gaps`.
+Single-tx edges (`txcount` = 1) may omit `txhashes` or write it as the one-element `[txhash]`. The legacy `_meta.edge_txhashes` map is superseded by `edge.txhashes` — do not emit it.
 
 Two rows that differ in `token` or `type` never merge, even within one transaction — that is what keeps both legs of a swap.
 
@@ -102,6 +102,7 @@ Two rows that differ in `token` or `type` never merge, even within one transacti
       "txcount": 1,
       "type": "token_transfer",
       "txhash": "0x...",
+      "txhashes": ["0x..."],
       "chainid": 1,
       "timestamp": "2024-03-15T10:23:00Z"
     }
@@ -109,7 +110,7 @@ Two rows that differ in `token` or `type` never merge, even within one transacti
 }
 ```
 
-Every edge object must include the `txhash` and `chainid` fields exactly as shown above. If the API row used `hash` or `transactionHash`, rename/copy it to `txhash` in the output edge. Set `edge.chainid` to the `{CHAINID}` used for the API call that returned that tx hash.
+Every edge object must include the `txhash` and `chainid` fields exactly as shown above. If the API row used `hash` or `transactionHash`, rename/copy it to `txhash` in the output edge. Set `edge.chainid` to the `{CHAINID}` used for the API call that returned that tx hash. Merged edges (`txcount` > 1) must also carry `txhashes` with every merged hash (see *Edge merging*); the canvas shows the full list and its on-chain validator checks each one.
 
 `balance` and `amount` are **bare decimal strings** with no unit suffix and no raw wei — `"12.5"`, never `"12.5 ETH"` and never `"12500000000000000000"`. The unit is the chain's native coin for `balance`, and the edge's `token` for `amount`. Use `null` when unresolved.
 
@@ -142,9 +143,6 @@ Also append a `_meta` block after the nodes/edges:
       "end_timestamp": "2024-03-22T10:23:00Z",
       "days": 7,
       "source": "seed_tx"
-    },
-    "edge_txhashes": {
-      "e_subj_atk": ["0x...", "0x..."]
     },
     "financials": {},
     "business_profile": null,
