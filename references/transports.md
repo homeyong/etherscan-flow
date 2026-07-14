@@ -29,6 +29,8 @@ Map API calls to CLI commands:
 | `contract` / `getsourcecode` | `etherscan contract getsourcecode {ADDRESS} --chain {CHAIN} --json` |
 | `nametag` / `getaddresstag` | `etherscan nametag getaddresstag {ADDR1,ADDR2,…} --chain {CHAIN} --json` |
 
+**`chainlist` on non-HTTP transports.** The chain-support check in *Chain resolution* (`GET https://api.etherscan.io/v2/chainlist`) is a plain keyless GET to the one allowed host. If the MCP server or CLI exposes an equivalent (e.g. a supported-chains tool or `etherscan chainlist`), use it; otherwise issue this one HTTP GET directly even on the MCP/CLI transport — it carries no key, so no credential handling is involved, and it still counts against the 100-call budget.
+
 Notes on CLI behaviour that the skill depends on:
 
 - `--boolean false` is **required** on `eth_getBlockByNumber`; omitting it returns `json-rpc error -32700: parse error`.
