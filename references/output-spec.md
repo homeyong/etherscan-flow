@@ -20,10 +20,13 @@ Before writing any JSON, check every node and edge against these rules. Fix or d
 | No duplicate movements | Deduplicate only when the exact same API movement was fetched through more than one query. A tx hash identifies a transaction, not every movement inside it: use `(chainid, txhash)` for a top-level normal tx, `(chainid, txhash, logIndex)` for event-log/token movements, and `(chainid, txhash, traceId)` for internal movements. If an endpoint provides no stable movement index, compare the complete normalized source row rather than dropping same-tx movements. | Remove exact source duplicates, then perform Step 5 edge merging |
 | Merged edges are consistent | If an edge merges several txs (`txcount` > 1), its `txhash` is the earliest tx in the group, `amount` is the summed decimal total, and `edge.txhashes` lists every distinct merged hash (earliest first, so `txhashes[0] === txhash`) | Recompute, or split the edge |
 | Token symbol resolved | If symbol is unknown after tokentx lookup, write `null` not an empty string or guess | Use `null` |
+| Hops 0-indexed | Every seed/scope address is `hop: 0`; no node exceeds the run's depth | Recompute `hop` from distance to the nearest seed |
+| Balance not fabricated | `balance` is a real figure from an `account`/`balance` response in this run, or `null` | Replace an unfetched balance with `null` |
 | Strings sanitized | Every string in the document — node/edge fields, case `name`, and all of `_meta` (timeline, gaps and their quoted `claim` text, patterns, candidates, business_profile prose) — contains no HTML tags or control characters, each ≤ 200 chars (Hard rule 5) | Strip and truncate |
 | No API key | The apikey string appears nowhere in the JSON | Remove it |
 | Evidence-backed roles | Every `attacker_eoa`/`scam_contract`/`victim_wallet` role has API evidence, not just a user claim | Downgrade to `unknown_*?`, note in gaps |
 | Performance counters reconcile | `new_api_calls` counts successful new requests, `network_attempts` also includes retries, cache/fetch-log hits are separate, and no credential appears in metrics | Recompute counters from the query ledger |
+| Totals declare their coverage | No summed figure may span a window that was not fully paginated. Mode B carries `_meta.business_profile.totals.coverage` (0D-3a) with sums computed over `effective_window`; strict-mode `_meta.financials` truncated by the page cap or budget carries `"coverage_complete": false` and a `totals_truncated` gap | Recompute the sums over the range actually covered, then set coverage — never emit a partial sum as if it were whole |
 
 For cross-endpoint duplicates, decoded receipt logs are canonical. When a `tokentx`, `tokennfttx`, or `token1155tx` row describes a movement already represented by a receipt log from the same `chainid` and `txhash`, use the account-feed row only to verify or fill token metadata; do not add another movement. Never collapse two canonical receipt logs merely because their source, target, token, and amount match — distinct `logIndex` values are distinct movements.
 
@@ -37,6 +40,14 @@ Save `case-{SHORT_ID}-flow.json` using the **Etherscan Flow Case** schema. This 
 - Directory: the platform's temp/scratchpad directory if one exists, otherwise `./cases/`. The user cannot override the path.
 
 Node `id` values must be short unique alphanumeric strings (6–10 chars, e.g. `subj01`, `atk01`, `cex01`). Edge `id` values follow the same convention (e.g. `e_atk_cex`). Set `x` and `y` to `0` — the frontend handles layout. Every node and edge must include `chainid`; for single-chain cases this equals `_meta.chainid`, and for future multi-chain cases it preserves the chain context for each address and tx hash.
+
+### Field conventions
+
+- **`hop` is 0-indexed from the seed.** Seed/scope addresses are `hop: 0`; addresses one transfer away are `hop: 1`, and so on. Hop values therefore run `0 … depth`, so the default depth of 2 (Step 0) yields hops 0, 1, and 2. In Mode B, every validated scope address is `hop: 0` regardless of how many there are.
+- **`balance` is optional and frequently `null`.** Steps 2 and 0D-2 fetch `balance` only when it is needed as evidence, so most nodes will not have one. Write `null` when it was not fetched — never `0`, never `"0.0"`, and never a guess (a fabricated `"0.0"` reads as a drained wallet).
+- **`subLabel` is optional** — `null` when there is no ENS name or second-line alias.
+- **`_meta.chains`** lists every chain that contributed a node or edge to this case, as `{ "chain": name, "chainid": int }` objects. For a single-chain case it holds exactly one entry, matching `_meta.chain` / `_meta.chainid`. It exists so a consumer can read the case's chain scope without walking every node.
+- **`_meta.financials`** is where all financial totals live (Step 3B). There is no top-level `financials` key; the top level is exactly `id`, `name`, `schemaVersion`, `nodes`, `edges`, `_meta`.
 
 ### Edge merging
 
@@ -73,7 +84,7 @@ Two rows that differ in `token` or `type` never merge, even within one transacti
       "label": "Subject",
       "subLabel": "alice.eth",
       "role": "unknown_eoa",
-      "hop": 1,
+      "hop": 0,
       "balance": "12.5",
       "notes": "Seed address",
       "x": 0,
@@ -86,8 +97,8 @@ Two rows that differ in `token` or `type` never merge, even within one transacti
       "label": "Attacker EOA",
       "subLabel": null,
       "role": "attacker_eoa",
-      "hop": 2,
-      "balance": "0.0",
+      "hop": 1,
+      "balance": null,
       "notes": "Created 3 days before drain",
       "x": 0,
       "y": 0

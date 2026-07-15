@@ -15,7 +15,7 @@ Every address, amount, and transaction hash in the output is grounded in a real 
 The skill has two modes, plus a document-import path:
 
 - **Strict trace mode:** start from a tx hash or address and follow the money.
-- **Business/entity profile mode:** start from a DAO/protocol/project/business scope, resolve it to verified addresses, then summarize income, spending, categories, and totals inside the JSON.
+- **Business/entity profile mode:** start from a DAO/protocol/project/business scope, resolve it to verified addresses, then summarize income, spending, categories, and totals inside the JSON. Ask for a period — "last year", "since launch", "in 2025" — and you get that period. Ask without one and you get the **last 7 days**, because a short window the tracer can fully paginate is a true number and a wide one it can't is not. Every total carries a `coverage` block saying which window it actually covers and whether it finished summing it.
 - **Document import (into hypothesis validation):** paste a draft case, notes, or any link you typed yourself — a gist, a tweet/X post, a news article, a blog post, a forum thread. The skill extracts the addresses and flow claims from it and validates every one against the live API — nothing from the document is copied into the output unverified. The URL fetch is read-only, never carries your API key, and only ever hits links *you* typed (it never crawls links found inside a page). If a page can't be read (login wall, JS-only), it asks you to paste the text instead of stopping.
 
 Named entities such as `ENS DAO` are treated as scope hypotheses, not evidence. The skill resolves them to real `0x...` addresses from user-provided addresses, API-resolved ENS names, or its known-entity scope table — which ships with the well-known ENS DAO candidates (treasury timelock, registrar controllers, token, governor) so `show ENS DAO as a business` works out of the box. Every table candidate is still validated live before it appears in a case.
@@ -207,10 +207,12 @@ API key stays in the CLI's env/config/keyring, and the skill calls commands such
 as:
 
 ```bash
-etherscan account txlist 0x... --chain ethereum --all --max-pages 20 --json
-etherscan account tokentx 0x... --chain ethereum --all --max-pages 20 --json
+etherscan account txlist 0x... --chain ethereum --page 1 --offset 100 --sort asc --json
+etherscan account tokentx 0x... --chain ethereum --page 1 --offset 100 --sort asc --json
 etherscan proxy eth_getTransactionByHash 0x... --chain ethereum --json
 ```
+
+The skill pages these itself rather than using `--all`, so it can stop the moment a branch reaches a CEX, mixer, or bridge. (`--all` auto-paginates to the end and can silently spend 20 calls of the run budget on a branch that was already finished.)
 
 Transport preference is:
 
@@ -268,7 +270,7 @@ codex "trace this scam 0x…"
 <details>
 <summary><b>Claude.ai (web)</b></summary>
 
-There are no per-call prompts here; instead, on paid plans you must **allowlist `api.etherscan.io`** once in the skill's network settings (see Quick start) or the calls are blocked outright.
+There are no per-call prompts here; instead, on paid plans you must **allowlist `api.etherscan.io`** once in the skill's network settings (see [Installation](#installation)) or the calls are blocked outright.
 </details>
 
 ## If your AI's safety filter flags a trace
@@ -288,11 +290,13 @@ If you hit a false positive on Claude: report it via `/feedback`, and if you do 
   "id": "case-a1b2c3d4",
   "name": "0xabcd… — approval drain traced to Binance 14",
   "schemaVersion": 1,
-  "nodes": [ { "id": "victim01", "address": "0x…", "chainid": 1, "role": "victim_wallet", "hop": 0, "label": "Victim", "notes": "…" } ],
-  "edges": [ { "id": "e1", "source": "victim01", "target": "atk01", "amount": "5000", "token": "USDT", "type": "token_transfer", "txhash": "0x…", "chainid": 1 } ],
-  "_meta": { "chain": "ethereum", "chainid": 1, "chains": [{ "chain": "ethereum", "chainid": 1 }], "patterns": [], "gaps": [], "disclaimer": "…" }
+  "nodes": [ { "id": "victim01", "address": "0x…", "chainid": 1, "role": "victim_wallet", "hop": 0, "label": "Victim", "subLabel": null, "balance": null, "notes": "…" } ],
+  "edges": [ { "id": "e1", "source": "victim01", "target": "atk01", "amount": "5000", "token": "USDT", "type": "token_transfer", "txcount": 1, "txhash": "0x…", "txhashes": ["0x…"], "chainid": 1, "timestamp": "2024-03-15T10:23:00Z" } ],
+  "_meta": { "chain": "ethereum", "chainid": 1, "chains": [{ "chain": "ethereum", "chainid": 1 }], "financials": {}, "performance": {}, "patterns": [], "gaps": [], "disclaimer": "…" }
 }
 ```
+
+Every node and edge carries a `chainid`. `hop` counts transfers from the seed, so seed and scope addresses are `hop: 0`. Repeated movements between the same pair collapse into one edge: `txcount` is how many transactions it merges, `txhash` is the earliest, and `txhashes` lists all of them so the canvas can validate each one on-chain. Anything the API did not resolve — a balance that was never needed, an unknown token symbol — is `null` rather than a guess. Financial totals live under `_meta.financials`; there is no top-level `financials` key.
 
 Roles, labels, and notes are AI inference over public Etherscan data — **not** Etherscan verdicts, accusations, or legal findings.
 

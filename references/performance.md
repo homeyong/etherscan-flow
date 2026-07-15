@@ -24,6 +24,21 @@ Before planning calls, create an in-memory ledger keyed by `(transport, chainid,
 - Store raw response, fetch time, attempt count, and elapsed milliseconds.
 - Maintain a movement index keyed by `(chainid, txhash, logIndex|traceId|top-level)`. Receipt logs are canonical for event movements; account feeds may enrich them but not duplicate them.
 
+## Fetch log — persist as you fetch, resume for free
+
+The ledger's on-disk twin. Append each raw API response as one line of `case-{SHORT_ID}-fetchlog.jsonl` in the scratchpad/temp directory:
+
+```json
+{"module": "...", "action": "...", "params": {}, "chainid": 1, "fetched_at": "ISO", "result": null}
+```
+
+- **Strip `apikey` from `params` before writing** (Hard rule 6).
+- Append the row inside the same transport/tool operation that fetched the response whenever the runtime allows it. Never spend a separate model/tool round trip just to log.
+- When a run with the same seed starts and this file exists, **load it first**: answer every already-logged call from the log, and continue from the first missing call.
+- Replayed calls do not count against the 100-call budget; only new network calls do. Count them in `_meta.performance.fetchlog_hits`.
+
+This is what makes an interruption — rate limit, provider safety flag, model switch, crash — cost nothing but the relaunch.
+
 ## Evidence waves
 
 Plan and execute the smallest next evidence wave, update the graph, then plan again:

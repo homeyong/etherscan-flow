@@ -122,7 +122,9 @@ Check `ContractName`. If empty/unverified, note "unverified contract".
 GET https://api.etherscan.io/v2/api?chainid={CHAINID}&module=account&action=tokennfttx&address={ADDRESS}&page=1&offset=20&sort=desc&apikey={APIKEY}
 ```
 
-Assign each address a **role label** (mark uncertain with `?`):
+Assign each address a **role label** (mark uncertain with `?`). The full enum lives in `references/output-spec.md`; the two tables below are the criteria for every value in it. Never assign a role the criteria do not support — fall back to `unknown_eoa` / `unknown_contract` (Hard rule 3).
+
+**Adversarial roles — require evidence, never a user claim (Hard rule 3):**
 
 | Label | Criteria |
 |-------|----------|
@@ -140,6 +142,21 @@ Assign each address a **role label** (mark uncertain with `?`):
 | `unknown_contract` | Contract, role unclear |
 
 CEX deposit heuristics: first tx from an exchange hot wallet, >1000 lifetime txs, or address age <7 days with large volume.
+
+**Structural roles — no accusation attached, so a nametag hit or a contract-shape check is enough.** These are the roles Mode B needs (a treasury timelock is a `multisig`/`dao_contract`, not an `unknown_contract`). Assign them from the same Step 2 evidence you already hold — `nametag`, `eth_getCode`, `getsourcecode` `ContractName`/ABI, and the movement rows in the receipt or account feeds:
+
+| Label | Criteria |
+|-------|----------|
+| `wallet` | EOA (`eth_getCode` = `0x`) with an identifying `nametag` hit, or a scope address the user named as theirs/the entity's. An EOA with no such evidence stays `unknown_eoa` |
+| `erc20_token` | Contract that emitted an ERC-20 `Transfer` (3 topics + data) in held evidence, or whose `tokentx` rows carry its `contractAddress` with a symbol/decimals |
+| `nft_contract` | Contract that emitted an ERC-721 `Transfer` (4 topics) or an ERC-1155 `TransferSingle`/`TransferBatch` in held evidence |
+| `defi_pool` | Contract that is both source and target of paired swap/liquidity legs in one tx (a router's counterparty), or whose `nametag`/`ContractName` identifies a pool/pair/vault |
+| `multisig` | Contract whose `nametag` names it a multisig/Safe, or whose `getsourcecode` `ContractName` is a known Safe/multisig implementation (e.g. `GnosisSafeProxy`). Corroborate with execution txs whose `from` differs across calls |
+| `staking_contract` | Contract identified by `nametag`/`ContractName` as staking/deposit/validator, and holding inbound `stake`-shaped movements |
+| `lending_protocol` | Contract identified by `nametag`/`ContractName` as a lending market (Aave/Compound/Morpho etc.), with `borrow`/`repay`-shaped movements |
+| `dao_contract` | Contract identified by `nametag`/`ContractName` as a governor, timelock, treasury, or registrar/controller for the entity in scope |
+
+> `getsourcecode` `ContractName` is attacker-controlled (Hard rule 4) and **can never assign a landmark role** — `cex_deposit`, `mixer_contract`, `bridge`, `dex_router` (see `references/landmarks.md`). It may support a *structural* role in this table only, where a wrong label misclassifies a shape rather than branding an address as an exchange or a sanctioned mixer. When `ContractName` is the only evidence, mark the role uncertain and say so in `notes`.
 
 ---
 
@@ -243,28 +260,37 @@ Compare the distribution of incoming amounts:
 
 ### Output the financial summary
 
-The financial summary lives **only in the JSON** — never as chat text (Hard rule 9). In strict scam/hack cases, add the following fields to the case JSON under a `"financials"` key:
+The financial summary lives **only in the JSON** — never as chat text (Hard rule 9) — and it lives under **`_meta.financials`**, never at the top level of the case. The top level carries `id`, `name`, `schemaVersion`, `nodes`, `edges`, and `_meta` and nothing else (`references/output-spec.md`). In strict scam/hack cases, populate `_meta.financials` with:
 ```json
-"financials": {
-  "total_eth_in_wei": "75700766123456789000000",
-  "total_eth_in": "75700.77",
-  "total_eth_out_wei": "75700768000000000000000",
-  "total_eth_out": "75700.77",
-  "net_retained_eth": "0.000060",
-  "large_funder_eth": "75700.61",
-  "large_funder_count": 5,
-  "small_victim_eth": "0.158",
-  "small_victim_count": 14,
-  "onchain_message_senders": 8,
-  "laundering_flag": true,
-  "note": "Pattern: few large funders + rapid scatter = laundering hub. Real victims are upstream."
+"_meta": {
+  "financials": {
+    "total_eth_in_wei": "75700766123456789000000",
+    "total_eth_in": "75700.77",
+    "total_eth_out_wei": "75700768000000000000000",
+    "total_eth_out": "75700.77",
+    "net_retained_eth": "0.000060",
+    "large_funder_eth": "75700.61",
+    "large_funder_count": 5,
+    "small_victim_eth": "0.158",
+    "small_victim_count": 14,
+    "onchain_message_senders": 8,
+    "laundering_flag": true,
+    "note": "Pattern: few large funders + rapid scatter = laundering hub. Real victims are upstream."
+  }
 }
 ```
 
-In business/entity profile mode, put totals under `_meta.business_profile.totals` and optionally mirror high-level totals in `_meta.financials`. Use token-grouped totals so mixed ETH/ERC-20 activity is not collapsed into a misleading single number:
+In business/entity profile mode, put totals under `_meta.business_profile.totals` and optionally mirror high-level totals in `_meta.financials`. Use token-grouped totals so mixed ETH/ERC-20 activity is not collapsed into a misleading single number. Every figure below is summed over `coverage.effective_window`, never over a window you did not finish paginating — see 0D-3a in `references/business-mode.md`, which is mandatory for Mode B totals:
 
 ```json
 "totals": {
+  "coverage": {
+    "complete": false,
+    "requested_window": { "start": "2026-07-07T00:00:00Z", "end": "2026-07-14T00:00:00Z" },
+    "effective_window": { "start": "2026-07-07T00:00:00Z", "end": "2026-07-11T04:12:00Z" },
+    "truncated_addresses": ["0x…"],
+    "reason": "page_cap"
+  },
   "inbound_by_token": {
     "ETH": "123.45",
     "USDC": "50000"

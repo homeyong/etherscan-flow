@@ -2,19 +2,18 @@
 name: etherscan-flow
 description: >-
   Trace on-chain money flow via the Etherscan API V2 and write a single
-  Etherscan Flow Case JSON file (nodes + edges schema). Input: tx hashes,
-  wallet/contract addresses, a resolvable business/entity scope ("show ENS
-  DAO as a business"), a pasted draft/notes, or a user-typed link (gist,
-  tweet/X, article) whose addresses and flow claims are extracted and
-  verified live. Two modes: strict trace for tx/address investigation, and
-  business/entity profile for income/spending/treasury questions. Use when
-  the user says "trace this tx", "visualize this transaction", "show the
-  flow of", "map this address", "follow the money", "build a case for this
-  scam", "investigate this hack", "show this DAO's income and spending",
-  or pastes a 0x... hash/address to trace, profile, or investigate. Output
-  is JSON only; every address, amount, and txhash comes from a live API
-  response, never invented. Ethereum mainnet by default; other EVM chains
-  supported. Optional apikey= argument overrides MCP/CLI/env key sources.
+  Etherscan Flow Case JSON file (nodes + edges). Input: a tx hash, a
+  wallet/contract address, a business/entity scope ("show ENS DAO as a
+  business"), pasted notes/draft, or a user-typed link (gist, tweet/X,
+  article) whose addresses and flow claims are verified live. Two modes:
+  strict trace for tx/address investigation, and business/entity profile
+  for income/spending/treasury questions. Use when the user says "trace
+  this tx", "visualize this transaction", "show the flow of", "map this
+  address", "follow the money", "build a case for this scam", "investigate
+  this hack", "show this DAO's income and spending", or pastes a 0x
+  hash/address. Output is JSON only; every address, amount and txhash comes
+  from a live API response, never invented. Ethereum by default, other EVM
+  chains supported. Optional apikey= overrides MCP/CLI/env key sources.
 ---
 
 # Etherscan Flow — Transaction and Business Flow Tracer
@@ -71,13 +70,9 @@ This skill is **read-only blockchain forensics over public ledger data**: victim
 
 - **State the purpose once, up front.** In harnesses that surface working notes between tool calls, the first note of a run states it neutrally, e.g. `Read-only forensic trace of public Etherscan data for case documentation — no exploit or attack tooling involved.` Accurate context is the best protection against a false positive.
 - **Keep the war story out of chat.** Interim working notes must be operational only — endpoints called, pages fetched, budget used (`fetched tokentx page 3/20, 41 calls used`) — never a laundering play-by-play (`found the exit`, `attacker cashed out through Tornado`). Investigative narrative belongs in `_meta.timeline`, `_meta.patterns`, and node/edge `notes`, where it sits next to its evidence. This is already the spirit of Hard rule 9; it applies to mid-run notes, not just the final message.
-- **If a provider safety layer still interrupts the run, never rephrase, re-encode, or otherwise try to slip past it.** That is the platform's decision, not this skill's. Save state (fetch log below), tell the user plainly that the provider's cybersecurity safeguard flagged the run, and point them to the platform's own remedies — on Claude, `/feedback` for false positives and Anthropic's Cyber Verification Program for vetted security work. Resume from the fetch log when the user relaunches.
+- **If a provider safety layer still interrupts the run, never rephrase, re-encode, or otherwise try to slip past it.** That is the platform's decision, not this skill's. Tell the user plainly that the provider's cybersecurity safeguard flagged the run, and point them to the platform's own remedies — on Claude, `/feedback` for false positives and Anthropic's Cyber Verification Program for vetted security work.
 
-### Fetch log — resuming an interrupted run
-
-Use the canonical query ledger in `references/performance.md` for loaded and newly fetched rows. Whenever the runtime permits, append each fetch-log row inside the same transport/tool operation that fetched the response; do not spend a separate model/tool round trip merely to log it.
-
-Persist as you fetch: append each raw API response as one line of `case-{SHORT_ID}-fetchlog.jsonl` in the scratchpad/temp directory — `{"module": "...", "action": "...", "params": {…}, "chainid": 1, "fetched_at": "ISO", "result": …}`. Strip `apikey` from `params` before writing (Hard rule 6). When a run with the same seed starts and this file exists, load it first: answer every already-logged call from the log instead of the network, and continue from the first missing call. Replayed calls do not count against the 100-call budget; only new network calls do. This makes any interruption — rate limit, provider safety flag, model switch, crash — cost nothing but the relaunch.
+Nothing is lost to an interruption: every API response is appended to a fetch log as it arrives, and a relaunch resumes from it instead of re-spending the budget. Mechanics — file format, key stripping, replay rules — are in `references/performance.md`, which you read before the first data call anyway.
 
 ## Operating modes
 
@@ -102,7 +97,7 @@ In business/entity profile mode, explain the business in plain language only ins
 
 Full procedure — scope resolution and validation, business window, income/spending categories, required `_meta.business_profile` fields, and the maintained known-entity scope table (including ENS DAO): read `references/business-mode.md`.
 
-Never invent new node `role` enum values for business categories. Use the existing node roles (`wallet`, `multisig`, `dao_contract`, `unknown_eoa`, `unknown_contract`, etc.) and put business categories in `notes` and `_meta.business_profile`.
+Never invent new node `role` enum values for business categories. Use the existing node roles and put business categories in `notes` and `_meta.business_profile`. The roles Mode B needs — `wallet`, `multisig`, `dao_contract`, `erc20_token`, `defi_pool`, `staking_contract`, `lending_protocol`, `nft_contract` — are the **structural roles**, and their assignment criteria are in the Step 2 table in `references/trace-steps.md`. Do not default a validated treasury, timelock, governor, or registrar to `unknown_contract`: it is a `dao_contract`/`multisig` whenever the Step 2 evidence supports it, and `unknown_contract` only when it does not.
 
 ## Output contract
 
@@ -260,12 +255,7 @@ Every run that produces a case reads at least `references/trace-steps.md` and `r
 
 ## API rate limit handling
 
-- **Never assume a fixed requests-per-second value or key tier.** The effective rate can differ by key, plan, endpoint, and transport.
-- Apply the adaptive controller in `references/performance.md`: honor transport/header guidance, group independent calls into bounded waves, and reduce concurrency after a limit response.
-- Hard budget: max 100 actual network attempts per run, max 20 pages per address (Hard rule 8). Cache/fetch-log hits do not count.
-- Honor `Retry-After` when available. A second rate-limit failure is skipped and recorded once in gaps.
-- On `"result":"Max rate limit reached"` — retry once, then skip and log in gaps.
-- Never call the same endpoint + params twice in one run.
+**Never assume a fixed requests-per-second value or key tier** — the effective rate differs by key, plan, endpoint, and transport. The adaptive controller in `references/performance.md` owns the policy (honor `Retry-After` and transport guidance, bounded waves, reduce concurrency after a limit response). The ceilings it must respect are 100 network attempts per run and 20 pages per address (Hard rule 8); cache/fetch-log hits are free. Never call the same endpoint + params twice in one run. On `"result":"Max rate limit reached"`, retry once, then skip and log it in gaps.
 - If `tokentx` or `txlistinternal` returns empty for a wide block range, narrow to ±1000 blocks around the seed and retry only if the adaptive policy permits it.
 
 ---

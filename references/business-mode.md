@@ -47,9 +47,44 @@ Use one batched nametag wave for surviving candidates if available. Stop validat
 
 ### 0D-3. Choose the business window
 
-If the user gives a date range, use its start and end timestamps as `{WINDOW_START_TIMESTAMP}` / `{WINDOW_END_TIMESTAMP}`. Otherwise inspect the validated scope addresses' recent transaction rows, take the latest confirmed activity timestamp as `{WINDOW_END_TIMESTAMP}`, and set `{WINDOW_START_TIMESTAMP}` to 7 days earlier. If no scope address has a transaction or transfer row, no edge can survive Step 4B: stop without writing a case.
+**Any period the user expresses wins** — not only an explicit `2024-01-01 → 2024-03-31` range, but any period language: "last year", "in 2025", "since launch", "this quarter", "over the past 6 months". Resolve it to `{WINDOW_START_TIMESTAMP}` / `{WINDOW_END_TIMESTAMP}` and use it. "Since launch" resolves to the earliest activity timestamp across the validated scope addresses.
 
-Step 3 converts these timestamps to block numbers once for the run. State the effective block/time window in both `_meta.trace_window` and `_meta.business_profile.timeframe`; add `timeframe_limited` to `_meta.gaps` whenever the selected window does not cover the entity's full history.
+Only when the user expresses **no** period at all: inspect the validated scope addresses' recent transaction rows, take the latest confirmed activity timestamp as `{WINDOW_END_TIMESTAMP}`, and set `{WINDOW_START_TIMESTAMP}` to **7 days** earlier. If no scope address has a transaction or transfer row, no edge can survive Step 4B: stop without writing a case.
+
+Seven days is deliberately short. Within a 100-call budget a wide window on a busy entity cannot be paginated to the end, and a **silently truncated sum is worse than a narrow complete one** — a partial total still reads to the user as "this DAO's revenue". A short window that is fully covered is a true statement; a wide window that is 30% covered is a false one. Do not widen the default to make the number look bigger.
+
+Because the default is narrow, the window is a headline fact, not a footnote: state it in `_meta.trace_window`, in `_meta.business_profile.timeframe`, as the **first sentence** of `plain_english_summary`, and in the case `name` (e.g. `"ENS DAO — income and spending, 7 days to 2026-07-14"`). Add `timeframe_limited` to `_meta.gaps` whenever the window does not cover the entity's full history — which, for a default-window run, is always.
+
+Step 3 converts these timestamps to block numbers once for the run.
+
+### 0D-3a. Coverage — never report a total you did not finish summing
+
+Totals pages are fetched `sort=asc` from `{WINDOW_START_TIMESTAMP}`, so when pagination stops early (20-page cap, 100-call budget, high-volume address), you have **completely** covered the window from its start up to the last row you fetched, and covered nothing after. That sub-range is a fact you can report; the full window is not.
+
+So when any scope address truncates:
+
+1. Take `{COVERED_END}` = the **earliest** "last fetched row" timestamp across all truncated scope addresses. Before that instant, every scope address is fully paginated; after it, at least one has a hole.
+2. The `effective_window` is `{WINDOW_START_TIMESTAMP}` → `{COVERED_END}`.
+3. **Compute every figure in `totals` over the `effective_window` only** — you already hold those rows, so this costs no calls. Drop rows after `{COVERED_END}` from the sums rather than letting a half-paginated address contribute a partial tail.
+4. Record the coverage honestly and add `totals_truncated` to `_meta.gaps`.
+
+Nodes and edges may still show movements after `{COVERED_END}` — they are individually real and evidence-backed. Only the **summed** figures are restricted to the `effective_window`, because a sum is a claim about a period and the others are not.
+
+Emit `totals.coverage` on every Mode B case, including complete ones:
+
+```json
+"coverage": {
+  "complete": false,
+  "requested_window": { "start": "2026-07-07T00:00:00Z", "end": "2026-07-14T00:00:00Z" },
+  "effective_window": { "start": "2026-07-07T00:00:00Z", "end": "2026-07-11T04:12:00Z" },
+  "truncated_addresses": ["0x253553366Da8546fC250F225fe3d25d0C782303b"],
+  "reason": "page_cap"
+}
+```
+
+`reason` is one of `page_cap`, `budget_exhausted`, `high_volume_address`, or `null` when `complete` is `true`. When `complete` is `true`, `effective_window` equals `requested_window`.
+
+Every total is therefore either complete over the window it names, or explicitly not. There is no third state.
 
 ### 0D-4. Classify income and spending
 
@@ -87,6 +122,13 @@ Populate `_meta.business_profile`:
   "income_categories": [],
   "spending_categories": [],
   "totals": {
+    "coverage": {
+      "complete": true,
+      "requested_window": { "start": "…", "end": "…" },
+      "effective_window": { "start": "…", "end": "…" },
+      "truncated_addresses": [],
+      "reason": null
+    },
     "inbound_by_token": {},
     "outbound_by_token": {},
     "net_by_token": {}
@@ -96,7 +138,11 @@ Populate `_meta.business_profile`:
 }
 ```
 
-Then continue to Step 2, Step 3, Step 4, Step 4B, and Step 5 with the validated scope addresses as seeds. Do not use scam-specific labels unless the API evidence supports them.
+`totals.coverage` is required (0D-3a). `plain_english_summary[0]` states the window and whether the totals are complete over it — a reader who sees only the first sentence must not come away with a wrong impression of what the numbers mean.
+
+Then continue to Step 2, Step 3, Step 4, Step 4B, and Step 5 with the validated scope addresses as seeds. Every validated scope address is `hop: 0` (`references/output-spec.md`).
+
+Assign node roles from the **structural roles** table in Step 2 (`references/trace-steps.md`) — a validated treasury timelock, governor, or registrar/controller is a `dao_contract` or `multisig`, not an `unknown_contract`. Do not use scam-specific labels unless the API evidence supports them.
 
 ### Maintained known entity scopes
 
