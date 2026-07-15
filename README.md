@@ -298,6 +298,8 @@ If you hit a false positive on Claude: report it via `/feedback`, and if you do 
 
 Every node and edge carries a `chainid`. `hop` counts transfers from the seed, so seed and scope addresses are `hop: 0`. Repeated movements between the same pair collapse into one edge: `txcount` is how many transactions it merges, `txhash` is the earliest, and `txhashes` lists all of them so the canvas can validate each one on-chain. Anything the API did not resolve — a balance that was never needed, an unknown token symbol — is `null` rather than a guess. Financial totals live under `_meta.financials`; there is no top-level `financials` key.
 
+The full contract is [`schema/case.schema.json`](./schema/case.schema.json) (JSON Schema), with a validating example in [`examples/`](./examples/). CI checks the example against the schema on every push, so the documented shape and a real case can't drift apart.
+
 Roles, labels, and notes are AI inference over public Etherscan data — **not** Etherscan verdicts, accusations, or legal findings.
 
 ## Optional: Connect the Etherscan MCP

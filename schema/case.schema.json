@@ -1,0 +1,185 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/homeyong/etherscan-flow/schema/case.schema.json",
+  "title": "Etherscan Flow Case",
+  "description": "The single JSON document produced by the etherscan-flow skill. Encodes the contract documented in references/output-spec.md. Every address, amount, and txhash must come from a live Etherscan API response — this schema checks shape, not provenance.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "name", "schemaVersion", "nodes", "edges", "_meta"],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^case-[0-9a-z-]+$",
+      "description": "case-{SHORT_ID}; SHORT_ID is 8 lowercase hex chars of the seed (Hard rule 7)."
+    },
+    "name": { "type": "string", "minLength": 1, "maxLength": 200 },
+    "schemaVersion": { "type": "integer", "const": 1 },
+    "nodes": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/node" }
+    },
+    "edges": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/edge" }
+    },
+    "_meta": { "$ref": "#/$defs/meta" }
+  },
+  "$defs": {
+    "address": {
+      "type": "string",
+      "pattern": "^0x[a-fA-F0-9]{40}$",
+      "description": "42-char hex address. Never an ENS name, alias, or placeholder (Hard rule 13)."
+    },
+    "txhash": {
+      "type": "string",
+      "pattern": "^0x[a-fA-F0-9]{64}$"
+    },
+    "decimalString": {
+      "type": ["string", "null"],
+      "pattern": "^-?[0-9]+(\\.[0-9]+)?$",
+      "description": "Bare human-readable decimal, no unit suffix, no raw wei. null when unresolved."
+    },
+    "nodeRole": {
+      "type": "string",
+      "enum": [
+        "wallet",
+        "erc20_token",
+        "nft_contract",
+        "defi_pool",
+        "multisig",
+        "staking_contract",
+        "lending_protocol",
+        "dao_contract",
+        "attacker_eoa",
+        "scam_contract",
+        "victim_wallet",
+        "intermediate_wallet",
+        "cex_deposit",
+        "dex_router",
+        "mixer_contract",
+        "bridge",
+        "nft_drainer_contract",
+        "sweeper_bot",
+        "unknown_eoa",
+        "unknown_contract"
+      ]
+    },
+    "edgeType": {
+      "type": "string",
+      "enum": [
+        "transfer",
+        "token_transfer",
+        "dex_swap",
+        "bridge",
+        "nft",
+        "approve",
+        "contract_call",
+        "mint",
+        "burn",
+        "stake",
+        "unstake",
+        "borrow",
+        "repay",
+        "liquidity_add",
+        "liquidity_remove"
+      ]
+    },
+    "node": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "address", "chainid", "role", "hop"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^[A-Za-z0-9_]{2,12}$" },
+        "address": { "$ref": "#/$defs/address" },
+        "chainid": { "type": "integer", "minimum": 1 },
+        "label": { "type": ["string", "null"], "maxLength": 200 },
+        "subLabel": {
+          "type": ["string", "null"],
+          "maxLength": 200,
+          "description": "ENS name or second-line alias; never replaces address."
+        },
+        "role": { "$ref": "#/$defs/nodeRole" },
+        "hop": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "0-indexed from the seed. Seed/scope addresses are hop 0."
+        },
+        "balance": {
+          "$ref": "#/$defs/decimalString",
+          "description": "Native-coin balance, or null when not fetched. Never a fabricated 0."
+        },
+        "notes": { "type": ["string", "null"], "maxLength": 200 },
+        "x": { "type": "number" },
+        "y": { "type": "number" }
+      }
+    },
+    "edge": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "source", "target", "type", "txhash", "chainid"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "source": { "type": "string", "description": "A node id." },
+        "target": { "type": "string", "description": "A node id." },
+        "amount": { "$ref": "#/$defs/decimalString" },
+        "token": { "type": ["string", "null"], "maxLength": 200 },
+        "txcount": { "type": "integer", "minimum": 1 },
+        "type": { "$ref": "#/$defs/edgeType" },
+        "txhash": { "$ref": "#/$defs/txhash" },
+        "txhashes": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/txhash" },
+          "maxItems": 100,
+          "description": "Every merged hash, ascending block order, txhashes[0] === txhash."
+        },
+        "chainid": { "type": "integer", "minimum": 1 },
+        "timestamp": {
+          "type": ["string", "null"],
+          "description": "ISO 8601, or null when unresolved."
+        }
+      }
+    },
+    "meta": {
+      "type": "object",
+      "required": ["created_at", "mode", "chain", "chainid", "gaps", "disclaimer"],
+      "properties": {
+        "created_at": { "type": "string" },
+        "mode": {
+          "type": "string",
+          "enum": ["strict_trace", "business_entity_profile"]
+        },
+        "chain": { "type": "string" },
+        "chainid": { "type": "integer", "minimum": 1 },
+        "chains": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["chain", "chainid"],
+            "properties": {
+              "chain": { "type": "string" },
+              "chainid": { "type": "integer", "minimum": 1 }
+            }
+          }
+        },
+        "seed_txhashes": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/txhash" }
+        },
+        "seed_addresses": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/address" }
+        },
+        "hops_traced": { "type": "integer", "minimum": 0 },
+        "trace_window": { "type": ["object", "null"] },
+        "financials": { "type": ["object", "null"] },
+        "business_profile": { "type": ["object", "null"] },
+        "performance": { "type": ["object", "null"] },
+        "timeline": { "type": "array" },
+        "patterns": { "type": "array" },
+        "candidates": { "type": "array" },
+        "gaps": { "type": "array" },
+        "disclaimer": { "type": "string" }
+      }
+    }
+  }
+}

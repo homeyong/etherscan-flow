@@ -36,10 +36,12 @@ For cross-endpoint duplicates, decoded receipt logs are canonical. When a `token
 
 Save `case-{SHORT_ID}-flow.json` using the **Etherscan Flow Case** schema. This is the **only** output — no chat summary, no prose.
 
+> The machine-checkable form of this contract is [`schema/case.schema.json`](../schema/case.schema.json), with a validating fixture in [`examples/strict-trace.example.json`](../examples/strict-trace.example.json). CI validates the fixture on every push. When you change a field, an enum value, or a required key below, update the schema in the same commit so the two never drift.
+
 - `SHORT_ID` — see Hard rule 7 for the exact derivation (seed tx hash, else seed address, else the lexicographically smallest scope address). Never derive it from free-form user text.
 - Directory: the platform's temp/scratchpad directory if one exists, otherwise `./cases/`. The user cannot override the path.
 
-Node `id` values must be short unique alphanumeric strings (6–10 chars, e.g. `subj01`, `atk01`, `cex01`). Edge `id` values follow the same convention (e.g. `e_atk_cex`). Set `x` and `y` to `0` — the frontend handles layout. Every node and edge must include `chainid`; for single-chain cases this equals `_meta.chainid`, and for future multi-chain cases it preserves the chain context for each address and tx hash.
+Node `id` values must be short unique alphanumeric strings (2–12 chars, e.g. `subj01`, `atk01`, `cex01`). Edge `id` values follow the same convention (e.g. `e_atk_cex`). Set `x` and `y` to `0` — the frontend handles layout. Every node and edge must include `chainid`; for single-chain cases this equals `_meta.chainid`, and for future multi-chain cases it preserves the chain context for each address and tx hash.
 
 ### Field conventions
 
