@@ -26,6 +26,7 @@ Before writing any JSON, check every node and edge against these rules. Fix or d
 | No API key | The apikey string appears nowhere in the JSON | Remove it |
 | Evidence-backed roles | Every `attacker_eoa`/`scam_contract`/`victim_wallet` role has API evidence, not just a user claim | Downgrade to `unknown_*?`, note in gaps |
 | Security analysis present | Every scam/hack/exploit/drain/phishing/rug-pull/compromised-wallet case, and every run where evidence indicates involuntary loss, has a non-null `_meta.analysis` with every required field | Complete `references/incident-analysis.md`; if the mechanism remains unknown, use `insufficient_evidence` and state the limitations |
+| Analysis status matches its evidence | A `confirmed`/`probable`/`possible` status cites at least one `evidence` entry and at least one `alternative_hypotheses` entry; `confirmed` additionally requires at least one `observed` claim; `insufficient_evidence` states at least one limitation | Supply the missing evidence or hypothesis, or lower `status` until it matches what the evidence supports |
 | Analysis evidence is traceable | Every `observed` evidence claim identifies at least one API source and cites the relevant txhash/address/block/selector where available; every cited txhash/address came from this run | Remove unsupported citations, downgrade the claim/status/confidence, and record the gap |
 | Analysis accounting is grounded | Every analysis loss/profit decimal is computed from canonical successful movements; tokens remain separate, and neutral routers/pools/fees are not counted as attacker profit | Recompute or omit the asset row and add a limitation |
 | Performance counters reconcile | `new_api_calls` counts successful new requests, `network_attempts` also includes retries, cache/fetch-log hits are separate, and no credential appears in metrics | Recompute counters from the query ledger |
@@ -171,11 +172,53 @@ Also append a `_meta` block after the nodes/edges:
       "root_cause": "The spender retained sufficient allowance at the loss transaction.",
       "confidence": "high",
       "decisive_txhashes": ["0x..."],
-      "evidence": [],
-      "losses_by_token": [],
-      "attacker_profit_by_token": [],
-      "alternative_hypotheses": [],
-      "limitations": []
+      "evidence": [
+        {
+          "claim": "Loss tx is a transferFrom moving 5000 USDC from victim to spender.",
+          "kind": "observed",
+          "sources": ["proxy/eth_getTransactionReceipt"],
+          "txhashes": ["0x..."],
+          "addresses": ["0x{VICTIM}", "0x{SPENDER}"],
+          "block": 19420000,
+          "selector": "0x23b872dd"
+        },
+        {
+          "claim": "Allowance set 3 days earlier best explains the spender-initiated move.",
+          "kind": "inferred",
+          "sources": ["account/txlist", "proxy/eth_call"],
+          "txhashes": ["0x..."],
+          "addresses": ["0x{SPENDER}"],
+          "block": 19420000,
+          "selector": null
+        }
+      ],
+      "losses_by_token": [
+        {
+          "token": "USDC",
+          "token_address": "0x{TOKEN}",
+          "gross_amount": "5000",
+          "returned_or_recovered": "0",
+          "net_amount": "5000"
+        }
+      ],
+      "attacker_profit_by_token": [
+        {
+          "token": "USDC",
+          "token_address": "0x{TOKEN}",
+          "gross_amount": "5000",
+          "returned_or_recovered": "0",
+          "net_amount": "5000"
+        }
+      ],
+      "alternative_hypotheses": [
+        {
+          "hypothesis": "The victim signed the transfer themselves (key compromise).",
+          "assessment": "unlikely",
+          "evidence_against": ["Loss tx sender is the spender, not the victim."],
+          "evidence_for": []
+        }
+      ],
+      "limitations": ["No debug trace available; internal call tree not inspected."]
     },
     "business_profile": null,
     "performance": {
