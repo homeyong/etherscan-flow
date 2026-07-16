@@ -96,6 +96,65 @@
       "total_eth_out": "0",
       "note": "SYNTHETIC fixture — figures are illustrative, not summed from API data."
     },
+    "analysis": {
+      "status": "confirmed",
+      "incident_type": "approval_drain",
+      "summary": "Synthetic allowance-drain conclusion used only to validate the analysis schema.",
+      "attack_vector": "ERC-20 allowance abuse",
+      "root_cause": "Synthetic spender retained allowance and initiated transferFrom.",
+      "confidence": "high",
+      "decisive_txhashes": ["0xaaaa000000000000000000000000000000000000000000000000000000000001"],
+      "evidence": [
+        {
+          "claim": "Synthetic receipt contains the victim-to-attacker token movement.",
+          "kind": "observed",
+          "sources": ["proxy/eth_getTransactionReceipt"],
+          "txhashes": ["0xaaaa000000000000000000000000000000000000000000000000000000000001"],
+          "addresses": [
+            "0x1111111111111111111111111111111111111111",
+            "0x2222222222222222222222222222222222222222"
+          ],
+          "block": 1,
+          "selector": "0x23b872dd"
+        },
+        {
+          "claim": "Allowance abuse is the best synthetic explanation for this fixture.",
+          "kind": "inferred",
+          "sources": ["proxy/eth_getTransactionReceipt", "proxy/eth_call"],
+          "txhashes": ["0xaaaa000000000000000000000000000000000000000000000000000000000001"],
+          "addresses": ["0x2222222222222222222222222222222222222222"],
+          "block": 1,
+          "selector": null
+        }
+      ],
+      "losses_by_token": [
+        {
+          "token": "USDC",
+          "token_address": "0x4444444444444444444444444444444444444444",
+          "gross_amount": "5000",
+          "returned_or_recovered": "0",
+          "net_amount": "5000"
+        }
+      ],
+      "attacker_profit_by_token": [
+        {
+          "token": "USDC",
+          "token_address": "0x4444444444444444444444444444444444444444",
+          "gross_amount": "5000",
+          "returned_or_recovered": "0",
+          "net_amount": "5000"
+        }
+      ],
+      "alternative_hypotheses": [
+        {
+          "hypothesis": "The victim intentionally transferred the token.",
+          "assessment": "unlikely",
+          "evidence_for": [],
+          "evidence_against": ["Synthetic fixture models a spender-initiated transferFrom."]
+        }
+      ],
+      "limitations": ["Synthetic fixture validates shape, not investigative accuracy or API provenance."]
+    },
     "business_profile": null,
     "performance": {
       "profile": "standard",
@@ -115,6 +174,7 @@
         "classification": 0,
         "trace": 0,
         "totals": 0,
+        "analysis": 0,
         "validation": 0
       },
       "soft_budget_overrun_reason": null

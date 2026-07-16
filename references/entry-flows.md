@@ -37,7 +37,7 @@ GET https://api.etherscan.io/v2/api?chainid={CHAINID}&module=account&action=toke
 | Contract call to an address created in the same block or within last 100 blocks | +3 | Fresh scam contract |
 | Large outgoing ETH transfer (>0.1 ETH) to an address with <10 lifetime txs | +3 | Suspicious ETH send |
 | Large outflow to an address victim never interacted with before | +2 | Suspicious destination |
-| tx failed (status=0) but internal txs still moved funds | +2 | Reentrancy or unusual drain |
+| Successful contract call shows repeated same-asset outflows or repeated effects in receipt/internal evidence | +2 | Possible looped or reentrant drain; requires incident analysis |
 
 If the user gave an approximate time, filter to a ±12 hour window first.
 

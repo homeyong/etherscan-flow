@@ -48,7 +48,8 @@ Plan and execute the smallest next evidence wave, update the graph, then plan ag
 3. **Classification:** one batched nametag request plus targeted classification of surviving nodes.
 4. **Trace:** initial pages for active branches, stop terminals, progressively widen unresolved branches.
 5. **Totals:** reuse trace pages and fetch only missing continuation pages.
-6. **Validation:** validate from held responses; fetch only evidence missing for a surviving edge.
+6. **Incident analysis (security cases):** reason over held evidence, then fetch only state/source/log evidence that can resolve a material mechanism or competing hypothesis.
+7. **Validation:** validate from held responses; fetch only evidence missing for a surviving edge or required analysis claim.
 
 Independent requests in one wave should share one grouped/parallel tool call when supported. Never launch the entire remaining budget at once because later calls may become unnecessary.
 
@@ -75,4 +76,4 @@ MCP or CLI may throttle internally. Do not add a conflicting fixed sleep.
 
 ## Required metrics
 
-Add `_meta.performance` to every case with: `profile`, `new_api_calls`, `network_attempts`, `cache_hits`, `fetchlog_hits`, `retries`, `rate_limit_responses`, `pages_fetched`, `pages_reused`, `soft_call_target`, `hard_call_limit`, `elapsed_ms`, `stage_elapsed_ms` (`seed`, `classification`, `trace`, `totals`, `validation`), and `soft_budget_overrun_reason`. Never include credentials.
+Add `_meta.performance` to every case with: `profile`, `new_api_calls`, `network_attempts`, `cache_hits`, `fetchlog_hits`, `retries`, `rate_limit_responses`, `pages_fetched`, `pages_reused`, `soft_call_target`, `hard_call_limit`, `elapsed_ms`, `stage_elapsed_ms` (`seed`, `classification`, `trace`, `totals`, `analysis`, `validation`), and `soft_budget_overrun_reason`. Never include credentials.

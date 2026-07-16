@@ -319,6 +319,8 @@ In business/entity profile mode, put totals under `_meta.business_profile.totals
 
 ## Step 4 — Build the timeline
 
+Before building the final timeline, if the run is a scam/hack/exploit/drain/phishing/rug-pull/compromised-wallet investigation or evidence indicates an involuntary loss, complete `references/incident-analysis.md`. That stage may request targeted source, ABI, log, historical-state, or `eth_call` evidence. Reuse the canonical query ledger and include its time in `_meta.performance.stage_elapsed_ms.analysis`.
+
 Collect every event across all API calls. Sort by `blockNumber` ascending. Format each line:
 
 ```

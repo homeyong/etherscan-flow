@@ -13,7 +13,9 @@ description: >-
   this hack", "show this DAO's income and spending", or pastes a 0x
   hash/address. Output is JSON only; every address, amount and txhash comes
   from a live API response, never invented. Ethereum by default, other EVM
-  chains supported. Optional apikey= overrides MCP/CLI/env key sources.
+  chains supported. Security cases also reconstruct an evidence-backed
+  incident mechanism, confidence, losses, and alternatives. Optional
+  apikey= overrides MCP/CLI/env key sources.
 ---
 
 # Etherscan Flow — Transaction and Business Flow Tracer
@@ -80,7 +82,7 @@ Choose exactly one mode during Step 0 and record it in `_meta.mode`.
 
 ### Mode A — strict trace mode
 
-Use strict trace mode when the user provides a tx hash or at least one `0x...` address, or when the wording is scam/hack/investigation/flow-first. This is the original money-flow tracer: identify the seed transaction or subject address, follow counterparties, classify roles, calculate financials where relevant, and write the case JSON.
+Use strict trace mode when the user provides a tx hash or at least one `0x...` address, or when the wording is scam/hack/exploit/drain/phishing/rug-pull/compromised-wallet/investigation/flow-first. Identify the seed transaction or subject address, follow counterparties, classify roles, calculate financials where relevant, and write the case JSON. For security investigations, tracing is not enough: run the mandatory incident-analysis stage and distinguish confirmed mechanism, best-supported hypothesis, and unknowns.
 
 ### Mode B — business/entity profile mode
 
@@ -246,6 +248,7 @@ The detailed procedures live in `references/` next to this SKILL.md. Read a file
 | Mode B — business/entity profile, scope resolution, known-entity scope table incl. ENS DAO (Step 0D) | `references/business-mode.md` |
 | The prompt contains an ENS name to resolve, or reverse-ENS enrichment (Step 0E) | `references/ens-resolution.md` |
 | Seed-tx resolution, entity classification, hop tracing, financial totals, timeline (Steps 1, 2, 3, 3B, 4) | `references/trace-steps.md` |
+| Scam, hack, exploit, drain, phishing, rug pull, compromised wallet, suspicious involuntary loss, or security-pattern evidence | `references/incident-analysis.md` — **mandatory for these strict-trace runs** |
 | **Before writing any JSON** — pre-output validation and the output schema (Steps 4B, 5) | `references/output-spec.md` — **mandatory in every run that writes a file** |
 | Labeling CEX / mixer / bridge landmarks (chainid 1 only), or recording scam patterns | `references/landmarks.md` |
 

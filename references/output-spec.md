@@ -25,6 +25,9 @@ Before writing any JSON, check every node and edge against these rules. Fix or d
 | Strings sanitized | Every string in the document — node/edge fields, case `name`, and all of `_meta` (timeline, gaps and their quoted `claim` text, patterns, candidates, business_profile prose) — contains no HTML tags or control characters, each ≤ 200 chars (Hard rule 5) | Strip and truncate |
 | No API key | The apikey string appears nowhere in the JSON | Remove it |
 | Evidence-backed roles | Every `attacker_eoa`/`scam_contract`/`victim_wallet` role has API evidence, not just a user claim | Downgrade to `unknown_*?`, note in gaps |
+| Security analysis present | Every scam/hack/exploit/drain/phishing/rug-pull/compromised-wallet case, and every run where evidence indicates involuntary loss, has a non-null `_meta.analysis` with every required field | Complete `references/incident-analysis.md`; if the mechanism remains unknown, use `insufficient_evidence` and state the limitations |
+| Analysis evidence is traceable | Every `observed` evidence claim identifies at least one API source and cites the relevant txhash/address/block/selector where available; every cited txhash/address came from this run | Remove unsupported citations, downgrade the claim/status/confidence, and record the gap |
+| Analysis accounting is grounded | Every analysis loss/profit decimal is computed from canonical successful movements; tokens remain separate, and neutral routers/pools/fees are not counted as attacker profit | Recompute or omit the asset row and add a limitation |
 | Performance counters reconcile | `new_api_calls` counts successful new requests, `network_attempts` also includes retries, cache/fetch-log hits are separate, and no credential appears in metrics | Recompute counters from the query ledger |
 | Totals declare their coverage | No summed figure may span a window that was not fully paginated. Mode B carries `_meta.business_profile.totals.coverage` (0D-3a) with sums computed over `effective_window`; strict-mode `_meta.financials` truncated by the page cap or budget carries `"coverage_complete": false` and a `totals_truncated` gap | Recompute the sums over the range actually covered, then set coverage — never emit a partial sum as if it were whole |
 
@@ -50,6 +53,7 @@ Node `id` values must be short unique alphanumeric strings (2–12 chars, e.g. `
 - **`subLabel` is optional** — `null` when there is no ENS name or second-line alias.
 - **`_meta.chains`** lists every chain that contributed a node or edge to this case, as `{ "chain": name, "chainid": int }` objects. For a single-chain case it holds exactly one entry, matching `_meta.chain` / `_meta.chainid`. It exists so a consumer can read the case's chain scope without walking every node.
 - **`_meta.financials`** is where all financial totals live (Step 3B). There is no top-level `financials` key; the top level is exactly `id`, `name`, `schemaVersion`, `nodes`, `edges`, `_meta`.
+- **`_meta.analysis`** is `null` for ordinary cases and a required structured forensic conclusion for security cases. `_meta.patterns` remains a compact index of detected patterns; it never replaces the evidence, confidence, competing hypotheses, and limitations in `_meta.analysis`.
 
 ### Edge merging
 
@@ -159,6 +163,20 @@ Also append a `_meta` block after the nodes/edges:
       "source": "seed_tx"
     },
     "financials": {},
+    "analysis": {
+      "status": "confirmed",
+      "incident_type": "approval_drain",
+      "summary": "A spender used an earlier approval to transfer the victim's token.",
+      "attack_vector": "ERC-20 allowance abuse",
+      "root_cause": "The spender retained sufficient allowance at the loss transaction.",
+      "confidence": "high",
+      "decisive_txhashes": ["0x..."],
+      "evidence": [],
+      "losses_by_token": [],
+      "attacker_profit_by_token": [],
+      "alternative_hypotheses": [],
+      "limitations": []
+    },
     "business_profile": null,
     "performance": {
       "profile": "standard",
@@ -178,6 +196,7 @@ Also append a `_meta` block after the nodes/edges:
         "classification": 0,
         "trace": 0,
         "totals": 0,
+        "analysis": 0,
         "validation": 0
       },
       "soft_budget_overrun_reason": null

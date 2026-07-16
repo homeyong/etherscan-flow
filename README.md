@@ -292,11 +292,11 @@ If you hit a false positive on Claude: report it via `/feedback`, and if you do 
   "schemaVersion": 1,
   "nodes": [ { "id": "victim01", "address": "0x…", "chainid": 1, "role": "victim_wallet", "hop": 0, "label": "Victim", "subLabel": null, "balance": null, "notes": "…" } ],
   "edges": [ { "id": "e1", "source": "victim01", "target": "atk01", "amount": "5000", "token": "USDT", "type": "token_transfer", "txcount": 1, "txhash": "0x…", "txhashes": ["0x…"], "chainid": 1, "timestamp": "2024-03-15T10:23:00Z" } ],
-  "_meta": { "chain": "ethereum", "chainid": 1, "chains": [{ "chain": "ethereum", "chainid": 1 }], "financials": {}, "performance": {}, "patterns": [], "gaps": [], "disclaimer": "…" }
+  "_meta": { "chain": "ethereum", "chainid": 1, "chains": [{ "chain": "ethereum", "chainid": 1 }], "financials": {}, "analysis": null, "performance": {}, "patterns": [], "gaps": [], "disclaimer": "…" }
 }
 ```
 
-Every node and edge carries a `chainid`. `hop` counts transfers from the seed, so seed and scope addresses are `hop: 0`. Repeated movements between the same pair collapse into one edge: `txcount` is how many transactions it merges, `txhash` is the earliest, and `txhashes` lists all of them so the canvas can validate each one on-chain. Anything the API did not resolve — a balance that was never needed, an unknown token symbol — is `null` rather than a guess. Financial totals live under `_meta.financials`; there is no top-level `financials` key.
+Every node and edge carries a `chainid`. `hop` counts transfers from the seed, so seed and scope addresses are `hop: 0`. Repeated movements between the same pair collapse into one edge: `txcount` is how many transactions it merges, `txhash` is the earliest, and `txhashes` lists all of them so the canvas can validate each one on-chain. Anything the API did not resolve — a balance that was never needed, an unknown token symbol — is `null` rather than a guess. Financial totals live under `_meta.financials`; structured forensic conclusions live under `_meta.analysis` (`null` for ordinary cases). There are no top-level `financials` or `analysis` keys.
 
 The full contract is [`schema/case.schema.json`](./schema/case.schema.json) (JSON Schema), with a validating example in [`examples/`](./examples/). CI checks the example against the schema on every push, so the documented shape and a real case can't drift apart.
 

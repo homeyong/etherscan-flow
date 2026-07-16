@@ -139,9 +139,101 @@
         }
       }
     },
+    "analysisAsset": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["token", "token_address", "gross_amount", "returned_or_recovered", "net_amount"],
+      "properties": {
+        "token": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "token_address": {
+          "anyOf": [
+            { "$ref": "#/$defs/address" },
+            { "type": "null" }
+          ]
+        },
+        "gross_amount": { "$ref": "#/$defs/decimalString" },
+        "returned_or_recovered": { "$ref": "#/$defs/decimalString" },
+        "net_amount": { "$ref": "#/$defs/decimalString" }
+      }
+    },
+    "analysisEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["claim", "kind", "sources", "txhashes", "addresses", "block", "selector"],
+      "properties": {
+        "claim": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "kind": { "type": "string", "enum": ["observed", "inferred", "unverified"] },
+        "sources": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1, "maxLength": 200 },
+          "minItems": 1
+        },
+        "txhashes": { "type": "array", "items": { "$ref": "#/$defs/txhash" } },
+        "addresses": { "type": "array", "items": { "$ref": "#/$defs/address" } },
+        "block": { "type": ["integer", "null"], "minimum": 0 },
+        "selector": { "type": ["string", "null"], "pattern": "^0x[a-fA-F0-9]{8}$" }
+      }
+    },
+    "analysisAlternative": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["hypothesis", "assessment", "evidence_for", "evidence_against"],
+      "properties": {
+        "hypothesis": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "assessment": { "type": "string", "enum": ["plausible", "unlikely", "unresolved"] },
+        "evidence_for": { "type": "array", "items": { "type": "string", "maxLength": 200 } },
+        "evidence_against": { "type": "array", "items": { "type": "string", "maxLength": 200 } }
+      }
+    },
+    "analysis": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status", "incident_type", "summary", "attack_vector", "root_cause", "confidence",
+        "decisive_txhashes", "evidence", "losses_by_token", "attacker_profit_by_token",
+        "alternative_hypotheses", "limitations"
+      ],
+      "properties": {
+        "status": { "type": "string", "enum": ["confirmed", "probable", "possible", "insufficient_evidence"] },
+        "incident_type": {
+          "type": "string",
+          "enum": [
+            "approval_drain", "permit_or_signature_abuse", "private_key_compromise",
+            "social_engineering_transfer", "access_control_exploit", "proxy_or_upgrade_exploit",
+            "reentrancy", "oracle_manipulation", "price_or_reserve_manipulation",
+            "flash_loan_assisted_exploit", "accounting_or_rounding_exploit", "rug_pull",
+            "malicious_token", "nft_drain", "laundering_only", "unknown"
+          ]
+        },
+        "summary": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "attack_vector": { "type": ["string", "null"], "maxLength": 200 },
+        "root_cause": { "type": ["string", "null"], "maxLength": 200 },
+        "confidence": { "type": "string", "enum": ["high", "medium", "low", "unknown"] },
+        "decisive_txhashes": { "type": "array", "items": { "$ref": "#/$defs/txhash" } },
+        "evidence": { "type": "array", "items": { "$ref": "#/$defs/analysisEvidence" } },
+        "losses_by_token": { "type": "array", "items": { "$ref": "#/$defs/analysisAsset" } },
+        "attacker_profit_by_token": { "type": "array", "items": { "$ref": "#/$defs/analysisAsset" } },
+        "alternative_hypotheses": { "type": "array", "items": { "$ref": "#/$defs/analysisAlternative" } },
+        "limitations": { "type": "array", "items": { "type": "string", "maxLength": 200 } }
+      }
+    },
+    "pattern": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["pattern", "evidence_txhash"],
+      "properties": {
+        "pattern": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "evidence_txhash": {
+          "anyOf": [
+            { "$ref": "#/$defs/txhash" },
+            { "type": "null" }
+          ]
+        }
+      }
+    },
     "meta": {
       "type": "object",
-      "required": ["created_at", "mode", "chain", "chainid", "gaps", "disclaimer"],
+      "required": ["created_at", "mode", "chain", "chainid", "analysis", "gaps", "disclaimer"],
       "properties": {
         "created_at": { "type": "string" },
         "mode": {
@@ -172,10 +264,16 @@
         "hops_traced": { "type": "integer", "minimum": 0 },
         "trace_window": { "type": ["object", "null"] },
         "financials": { "type": ["object", "null"] },
+        "analysis": {
+          "anyOf": [
+            { "$ref": "#/$defs/analysis" },
+            { "type": "null" }
+          ]
+        },
         "business_profile": { "type": ["object", "null"] },
         "performance": { "type": ["object", "null"] },
         "timeline": { "type": "array" },
-        "patterns": { "type": "array" },
+        "patterns": { "type": "array", "items": { "$ref": "#/$defs/pattern" } },
         "candidates": { "type": "array" },
         "gaps": { "type": "array" },
         "disclaimer": { "type": "string" }
