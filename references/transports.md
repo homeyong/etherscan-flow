@@ -43,6 +43,17 @@ Notes on CLI behaviour that the skill depends on:
 
 If the CLI command fails because it is not installed, not logged in, or lacks a required endpoint, fall through to the next key source. If it fails because the API returns an error, record that API error in `_meta.gaps` and continue where possible.
 
+**Separate the two failure modes — they are different facts and they are not each other's evidence.**
+
+| What happened | How to tell | What to record |
+|---------------|-------------|----------------|
+| The API answered "no" | The command ran and returned an error body: plan-gated (`API Exclusive endpoint`), `NOTOK`, rate limit, bad params | A blocked gap quoting that body verbatim, with the `endpoint` (`references/output-spec.md` → *`_meta.gaps` entries*). Do not fall through — the key is fine, this endpoint is not for it |
+| The transport did not answer | Non-zero exit with no API body, binary missing, timeout, no key resolved | Fall through to the next key source. Only if every source fails is it a blocked gap, quoting the transport's own error |
+
+`nametag/getaddresstag` is **Pro Plus** and returns `Sorry, it looks like you are trying to access an API Exclusive endpoint` on keys without it. This is expected and benign: it means no curated Etherscan labels are available for this run, so every label must come from observed behaviour (Hard rule 3 applies unchanged). It is a plan fact about one endpoint — it is **not** evidence that the transport is broken, and it says nothing about any other endpoint's availability.
+
+In particular, `contract/getsourcecode` carries no plan gate on a standard key and is the single highest-value classification call in a security case: verified source is what separates "the guard was missing" from "the guard passed because the attacker had become the authorized caller" — opposite root causes that produce identical logs. Never report source as unavailable without having called it and received an error to quote. Falling back to bytecode when the source was there for the asking produces a confidently-hedged wrong answer, which is worse than a slow right one.
+
 ## `ETHERSCAN_API_KEY` — per-shell check and reference syntax (credentials step 4)
 
 **POSIX shells (bash/zsh — macOS, Linux):**

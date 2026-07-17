@@ -30,6 +30,7 @@ Before writing any JSON, check every node and edge against these rules. Fix or d
 | Analysis evidence is traceable | Every `observed` evidence claim identifies at least one API source and cites the relevant txhash/address/block/selector where available; every cited txhash/address came from this run | Remove unsupported citations, downgrade the claim/status/confidence, and record the gap |
 | Analysis accounting is grounded | Every analysis loss/profit decimal is computed from canonical successful movements; tokens remain separate, and neutral routers/pools/fees are not counted as attacker profit | Recompute or omit the asset row and add a limitation |
 | Performance counters reconcile | `new_api_calls` counts successful new requests, `network_attempts` also includes retries, cache/fetch-log hits are separate, and no credential appears in metrics | Recompute counters from the query ledger |
+| Attempted gaps name their call | Every `*_unavailable` / `*_incomplete` / `*_empty` gap names the `endpoint` it called, and quotes the verbatim `error` if the call returned one. A blocker you never attempted is not a gap, and its `endpoint` must appear in the query ledger / fetch log for this run | Make the call. If it succeeds, use the data and delete the gap; if it fails, quote the real error; if you chose not to call it, reclassify as `scope_limited` with the reason |
 | Totals declare their coverage | No summed figure may span a window that was not fully paginated. Mode B carries `_meta.business_profile.totals.coverage` (0D-3a) with sums computed over `effective_window`; strict-mode `_meta.financials` truncated by the page cap or budget carries `"coverage_complete": false` and a `totals_truncated` gap | Recompute the sums over the range actually covered, then set coverage — never emit a partial sum as if it were whole |
 
 For cross-endpoint duplicates, decoded receipt logs are canonical. When a `tokentx`, `tokennfttx`, or `token1155tx` row describes a movement already represented by a receipt log from the same `chainid` and `txhash`, use the account-feed row only to verify or fill token metadata; do not add another movement. Never collapse two canonical receipt logs merely because their source, target, token, and amount match — distinct `logIndex` values are distinct movements.
@@ -252,6 +253,37 @@ Also append a `_meta` block after the nodes/edges:
   }
 }
 ```
+
+## `_meta.gaps` entries
+
+Every gap is an object. `type` and `detail` are always required; `endpoint` and `error` are required for the blocked types below. Use `detail` — never `note`, `reason`, or another synonym.
+
+```json
+{
+  "type": "source_unavailable",
+  "detail": "Provider implementation source could not be read; classification fell back to bytecode.",
+  "endpoint": "contract/getsourcecode",
+  "error": "Sorry, it looks like you are trying to access an API Exclusive endpoint."
+}
+```
+
+**Attempted types — `endpoint` required, plus verbatim `error` whenever the call returned one:** `source_unavailable`, `nametag_unavailable`, `historical_state_unavailable`, `internal_txs_empty`, and any other `*_unavailable` / `*_incomplete` / `*_empty` type. These assert that you called something and it did not give you what you needed, so they must name what you called.
+
+Not every failed call errors. A call can return `200 OK` and still be useless — `proxy/eth_call` ignoring a historical block tag, or `account/txlistinternal` returning zero rows. Then there is no `error` to quote: give the `endpoint` and describe in `detail` what came back instead. Omit `error` rather than inventing one.
+
+**Unattempted types — `detail` only:** `scope_limited`, `unresolved_entity`, `unverified_claim`, `mechanism_uncertainty`, `timeframe_limited`, `chain_unsupported`, `edge_txhashes_truncated`, `budget_exhausted`, `totals_truncated`. These record a choice or an internal limit, not a call that failed. `budget_exhausted` and `totals_truncated` are evidenced by `_meta.performance` counters, not by an endpoint.
+
+Use these type names as written — they are the vocabulary. Do not coin a synonym for a type that already exists.
+
+A blocked gap is a claim about the outside world, and it is load-bearing: it justifies a fallback, a lower `_meta.analysis.confidence`, and a narrower trace. So it carries the same burden of proof as an `observed` evidence claim — quote what the transport actually said, exactly as it said it.
+
+Three rules follow from that:
+
+- **Never infer a blocker from a sibling.** One endpoint being plan-gated says nothing about a different endpoint. `nametag/getaddresstag` is Pro Plus on many keys while `contract/getsourcecode` is free — a plan error on the first is not evidence about the second. Attempt each endpoint you intend to report as blocked.
+- **Distinguish "the API said no" from "the transport broke."** An API error with a response body (plan-gated, rate-limited, `NOTOK`) is a fact you quote. A transport that never returned is a different failure with a different error. Do not describe the first as the second.
+- **A choice is not a blocker.** Stopping at a high-volume node, or at the hop depth, is `scope_limited` with a reason — not `*_unavailable`. Reserve blocked types for calls you made and that failed.
+
+When no error string exists because the call was never made, there is no gap to write. Make the call, or say plainly that you did not.
 
 Print the full path to the JSON file at the end of your reply.
 

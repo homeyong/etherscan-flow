@@ -190,7 +190,7 @@
     "gaps": [
       {
         "type": "synthetic_fixture",
-        "note": "This file is a schema-validation fixture. Every address, txhash, and amount is fabricated and must never be presented as a real Etherscan trace."
+        "detail": "This file is a schema-validation fixture. Every address, txhash, and amount is fabricated and must never be presented as a real Etherscan trace."
       }
     ],
     "disclaimer": "SYNTHETIC SCHEMA FIXTURE — fabricated data for validating case.schema.json, NOT a real trace. Roles, labels and notes are AI inference over public Etherscan API data — not Etherscan verdicts, accusations, or legal findings."
